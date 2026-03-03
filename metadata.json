@@ -1,0 +1,5 @@
+{
+  "name": "ATHLAVIX VOICE",
+  "description": "A fun, expert Skincare & Beauty Specialist AI Agent with gamification and bilingual support.",
+  "requestFramePermissions": ["microphone"]
+}
