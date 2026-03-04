@@ -8,12 +8,14 @@ interface ChatProps {
   messages: Message[];
   onSendMessage: (text: string) => void;
   isTyping: boolean;
+  userAvatar: string | null;
 }
 
-export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping }) => {
+export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, userAvatar }) => {
   const [input, setInput] = useState("");
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [sttLang, setSttLang] = useState<"en-US" | "bn-BD">("en-US");
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
@@ -23,7 +25,7 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping })
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = false;
-      recognitionRef.current.lang = "en-US"; // Default, can be changed to "bn-BD"
+      recognitionRef.current.lang = sttLang;
 
       recognitionRef.current.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
@@ -36,11 +38,15 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping })
         setIsListening(false);
       };
 
+      recognitionRef.current.onnotification = (event: any) => {
+        console.log("Speech notification:", event);
+      };
+
       recognitionRef.current.onend = () => {
         setIsListening(false);
       };
     }
-  }, []);
+  }, [sttLang]);
 
   const toggleListening = () => {
     if (isListening) {
@@ -48,8 +54,11 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping })
       setIsListening(false);
     } else {
       try {
-        recognitionRef.current?.start();
-        setIsListening(true);
+        if (recognitionRef.current) {
+          recognitionRef.current.lang = sttLang;
+          recognitionRef.current.start();
+          setIsListening(true);
+        }
       } catch (err) {
         console.error("Failed to start speech recognition:", err);
       }
@@ -72,10 +81,23 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping })
   const speak = (text: string) => {
     if (!isVoiceEnabled) return;
     const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Detect if text contains Bengali characters
+    const hasBengali = /[\u0980-\u09FF]/.test(text);
+    
     // Try to find a nice voice
     const voices = window.speechSynthesis.getVoices();
-    const preferredVoice = voices.find(v => v.lang.includes('bn') || v.lang.includes('en'));
+    let preferredVoice;
+    
+    if (hasBengali) {
+      preferredVoice = voices.find(v => v.lang.includes('bn'));
+    } else {
+      preferredVoice = voices.find(v => v.lang.includes('en'));
+    }
+    
     if (preferredVoice) utterance.voice = preferredVoice;
+    else if (voices.length > 0) utterance.voice = voices[0];
+    
     window.speechSynthesis.speak(utterance);
   };
 
@@ -99,12 +121,20 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping })
             <p className="text-[10px] uppercase tracking-widest font-bold opacity-50">Expert Specialist</p>
           </div>
         </div>
-        <button 
-          onClick={() => setIsVoiceEnabled(!isVoiceEnabled)}
-          className={`p-2 rounded-full transition-all ${isVoiceEnabled ? 'bg-athlavix-accent text-white' : 'bg-white/50 text-athlavix-accent'}`}
-        >
-          {isVoiceEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setSttLang(sttLang === "en-US" ? "bn-BD" : "en-US")}
+            className="px-2 py-1 rounded-md text-[10px] font-bold border border-athlavix-accent/20 hover:bg-athlavix-accent/5 transition-colors text-athlavix-accent"
+          >
+            {sttLang === "en-US" ? "EN" : "BN"}
+          </button>
+          <button 
+            onClick={() => setIsVoiceEnabled(!isVoiceEnabled)}
+            className={`p-2 rounded-full transition-all ${isVoiceEnabled ? 'bg-athlavix-accent text-white' : 'bg-white/50 text-athlavix-accent'}`}
+          >
+            {isVoiceEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
@@ -120,8 +150,10 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping })
               animate={{ opacity: 1, y: 0, scale: 1 }}
               className={`flex items-start gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
             >
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === "user" ? "bg-white/50 text-athlavix-accent" : "bg-athlavix-accent text-white"}`}>
-                {msg.role === "user" ? <User size={16} /> : <Bot size={16} />}
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${msg.role === "user" ? "bg-white/50 text-athlavix-accent" : "bg-athlavix-accent text-white"}`}>
+                {msg.role === "user" ? (
+                  userAvatar ? <img src={userAvatar} alt="User" className="w-full h-full object-cover" /> : <User size={16} />
+                ) : <Bot size={16} />}
               </div>
               <div className={`max-w-[80%] p-4 rounded-2xl shadow-sm ${
                 msg.role === "user" 
@@ -168,7 +200,7 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping })
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            placeholder={isListening ? "Listening..." : "Ask anything about your skin..."}
+            placeholder={isListening ? (sttLang === "en-US" ? "Listening..." : "শুনছি...") : (sttLang === "en-US" ? "Ask anything about your skin..." : "আপনার ত্বক সম্পর্কে কিছু জিজ্ঞাসা করুন...")}
             className="flex-1 bg-transparent border-none focus:ring-0 text-sm px-2 placeholder:text-athlavix-accent/30"
           />
           <button 

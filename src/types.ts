@@ -22,6 +22,7 @@ export interface UserState {
   id: string;
   name: string;
   whatsapp: string;
+  avatar: string | null;
   skinType: SkinType | null;
   concerns: string[];
   points: number;

@@ -14,6 +14,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     name TEXT,
+    whatsapp TEXT,
+    avatar TEXT,
     skin_type TEXT,
     concerns TEXT,
     points INTEGER DEFAULT 0,
@@ -23,6 +25,13 @@ db.exec(`
     history TEXT DEFAULT '[]'
   )
 `);
+
+// Migration: Add avatar column if it doesn't exist
+try {
+  db.exec("ALTER TABLE users ADD COLUMN avatar TEXT");
+} catch (e) {
+  // Column probably already exists
+}
 
 // Migration: Add completed_challenges column if it doesn't exist
 try {
@@ -62,14 +71,28 @@ async function startServer() {
     }
   });
 
+  // Admin Route: Get all users
+  app.get("/api/admin/users", (req, res) => {
+    const users = db.prepare("SELECT * FROM users").all() as any[];
+    res.json(users.map(user => ({
+      ...user,
+      skinType: user.skin_type,
+      concerns: JSON.parse(user.concerns || "[]"),
+      badges: JSON.parse(user.badges || "[]"),
+      completedChallenges: JSON.parse(user.completed_challenges || "[]"),
+      history: JSON.parse(user.history || "[]")
+    })));
+  });
+
   app.post("/api/user", (req, res) => {
-    const { id, name, whatsapp, skinType, concerns, points, level, badges, completedChallenges, history } = req.body;
+    const { id, name, whatsapp, avatar, skinType, concerns, points, level, badges, completedChallenges, history } = req.body;
     const stmt = db.prepare(`
-      INSERT INTO users (id, name, whatsapp, skin_type, concerns, points, level, badges, completed_challenges, history)
-      VALUES (@id, @name, @whatsapp, @skin_type, @concerns, @points, @level, @badges, @completed_challenges, @history)
+      INSERT INTO users (id, name, whatsapp, avatar, skin_type, concerns, points, level, badges, completed_challenges, history)
+      VALUES (@id, @name, @whatsapp, @avatar, @skin_type, @concerns, @points, @level, @badges, @completed_challenges, @history)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         whatsapp = excluded.whatsapp,
+        avatar = excluded.avatar,
         skin_type = excluded.skin_type,
         concerns = excluded.concerns,
         points = excluded.points,
@@ -83,6 +106,7 @@ async function startServer() {
       id,
       name,
       whatsapp: whatsapp || "",
+      avatar: avatar || null,
       skin_type: skinType || null,
       concerns: JSON.stringify(concerns || []),
       points: points || 0,
