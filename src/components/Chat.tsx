@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Message, UserState } from "../types";
-import { Send, Mic, Volume2, VolumeX, Sparkles, User, Bot } from "lucide-react";
+import { Send, Mic, Volume2, VolumeX, Sparkles, User, Bot, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import Markdown from "react-markdown";
 
@@ -14,6 +14,7 @@ interface ChatProps {
 
 export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, userAvatar, botAvatar }) => {
   const [input, setInput] = useState("");
+  const [interimInput, setInterimInput] = useState("");
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [sttLang, setSttLang] = useState<"en-US" | "bn-BD">("en-US");
@@ -24,35 +25,57 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
     if (typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = sttLang;
 
       recognitionRef.current.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setInput(prev => prev + (prev ? " " : "") + transcript);
-        setIsListening(false);
+        let finalTranscript = "";
+        let interimTranscript = "";
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+
+        if (finalTranscript) {
+          setInput(prev => prev + (prev ? " " : "") + finalTranscript);
+          setInterimInput("");
+        } else {
+          setInterimInput(interimTranscript);
+        }
       };
 
       recognitionRef.current.onerror = (event: any) => {
         console.error("Speech recognition error:", event.error);
+        if (event.error === 'no-speech') {
+          // Ignore no-speech error to keep listening if continuous
+          return;
+        }
         setIsListening(false);
-      };
-
-      recognitionRef.current.onnotification = (event: any) => {
-        console.log("Speech notification:", event);
       };
 
       recognitionRef.current.onend = () => {
-        setIsListening(false);
+        // Only reset if we didn't stop it manually or if it crashed
+        if (isListening) {
+          try {
+            recognitionRef.current.start();
+          } catch (e) {
+            setIsListening(false);
+          }
+        }
       };
     }
-  }, [sttLang]);
+  }, [sttLang, isListening]);
 
   const toggleListening = () => {
     if (isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
+      setInterimInput("");
     } else {
       try {
         if (recognitionRef.current) {
@@ -109,6 +132,18 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
     }
   }, [messages, isVoiceEnabled]);
 
+  const formatDateSeparator = (date: Date) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+    if (messageDate.getTime() === today.getTime()) return "Today";
+    if (messageDate.getTime() === yesterday.getTime()) return "Yesterday";
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
   return (
     <div className="flex flex-col h-full glass-card overflow-hidden">
       {/* Header */}
@@ -123,15 +158,23 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button 
-            onClick={() => setSttLang(sttLang === "en-US" ? "bn-BD" : "en-US")}
-            className="px-2 py-1 rounded-md text-[10px] font-bold border border-athlavix-accent/20 hover:bg-athlavix-accent/5 transition-colors text-athlavix-accent"
-          >
-            {sttLang === "en-US" ? "EN" : "BN"}
-          </button>
+          <div className="flex bg-white/50 rounded-lg p-1 border border-athlavix-accent/10">
+            <button 
+              onClick={() => setSttLang("en-US")}
+              className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${sttLang === "en-US" ? "bg-athlavix-accent text-white shadow-sm" : "text-athlavix-accent/60 hover:text-athlavix-accent"}`}
+            >
+              EN
+            </button>
+            <button 
+              onClick={() => setSttLang("bn-BD")}
+              className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${sttLang === "bn-BD" ? "bg-athlavix-accent text-white shadow-sm" : "text-athlavix-accent/60 hover:text-athlavix-accent"}`}
+            >
+              BN
+            </button>
+          </div>
           <button 
             onClick={() => setIsVoiceEnabled(!isVoiceEnabled)}
-            className={`p-2 rounded-full transition-all ${isVoiceEnabled ? 'bg-athlavix-accent text-white' : 'bg-white/50 text-athlavix-accent'}`}
+            className={`p-2 rounded-full transition-all ${isVoiceEnabled ? 'bg-athlavix-accent text-white shadow-md' : 'bg-white/50 text-athlavix-accent'}`}
           >
             {isVoiceEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
           </button>
@@ -144,34 +187,50 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
         className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth"
       >
         <AnimatePresence>
-          {messages.map((msg, idx) => (
-            <motion.div
-              key={idx}
-              initial={{ opacity: 0, y: 10, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              className={`flex items-start gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
-            >
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${msg.role === "user" ? "bg-white/50 text-athlavix-accent" : "bg-athlavix-accent text-white"}`}>
-                {msg.role === "user" ? (
-                  userAvatar ? <img src={userAvatar} alt="User" className="w-full h-full object-cover" /> : <User size={16} />
-                ) : (
-                  botAvatar ? <img src={botAvatar} alt="Bot" className="w-full h-full object-cover" /> : <Bot size={16} />
+          {messages.map((msg, idx) => {
+            const prevMsg = messages[idx - 1];
+            const showDateSeparator = !prevMsg || 
+              new Date(prevMsg.timestamp).toDateString() !== new Date(msg.timestamp).toDateString();
+            
+            return (
+              <React.Fragment key={idx}>
+                {showDateSeparator && (
+                  <div className="flex justify-center my-4">
+                    <span className="px-3 py-1 rounded-full bg-athlavix-accent/5 text-[10px] font-bold uppercase tracking-widest text-athlavix-accent/40 border border-athlavix-accent/5">
+                      {formatDateSeparator(new Date(msg.timestamp))}
+                    </span>
+                  </div>
                 )}
-              </div>
-              <div className={`max-w-[80%] p-4 rounded-2xl shadow-sm ${
-                msg.role === "user" 
-                  ? "bg-athlavix-accent text-white rounded-tr-none" 
-                  : "bg-white/80 text-athlavix-text rounded-tl-none"
-              }`}>
-                <div className="markdown-body text-sm leading-relaxed">
-                  <Markdown>{msg.text}</Markdown>
-                </div>
-                <p className="text-[10px] opacity-50 mt-2 text-right">
-                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
-              </div>
-            </motion.div>
-          ))}
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  className={`flex items-start gap-4 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
+                >
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden shadow-md border-2 ${msg.role === "user" ? "bg-white text-athlavix-accent border-white" : "bg-athlavix-accent text-white border-athlavix-accent/20"}`}>
+                    {msg.role === "user" ? (
+                      userAvatar ? <img src={userAvatar} alt="User" className="w-full h-full object-cover" /> : <User size={20} />
+                    ) : (
+                      botAvatar ? <img src={botAvatar} alt="Bot" className="w-full h-full object-cover" /> : <Bot size={20} />
+                    )}
+                  </div>
+                  <div className={`max-w-[75%] space-y-1 ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                    <div className={`p-4 rounded-2xl shadow-sm ${
+                      msg.role === "user" 
+                        ? "bg-athlavix-accent text-white rounded-tr-none" 
+                        : "bg-white/90 text-athlavix-text rounded-tl-none border border-white/50"
+                    }`}>
+                      <div className="markdown-body text-sm leading-relaxed">
+                        <Markdown>{msg.text}</Markdown>
+                      </div>
+                    </div>
+                    <p className={`text-[9px] font-bold uppercase tracking-widest opacity-40 px-1 ${msg.role === "user" ? "text-right" : "text-left"}`}>
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </motion.div>
+              </React.Fragment>
+            );
+          })}
         </AnimatePresence>
         {isTyping && (
           <motion.div 
@@ -190,11 +249,20 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
       </div>
 
       {/* Input */}
-      <div className="p-4 bg-white/30 border-t border-white/30">
+      <div className="p-4 bg-white/30 border-t border-white/30 space-y-2">
+        {isListening && interimInput && (
+          <motion.div 
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="px-4 py-2 bg-athlavix-accent/5 rounded-xl border border-athlavix-accent/10 text-xs text-athlavix-accent/60 italic"
+          >
+            {interimInput}
+          </motion.div>
+        )}
         <div className="flex items-center gap-2 bg-white/80 rounded-full p-2 shadow-inner border border-white/50">
           <button 
             onClick={toggleListening}
-            className={`p-2 rounded-full transition-all ${isListening ? 'bg-red-500 text-white animate-pulse' : 'text-athlavix-accent hover:bg-athlavix-accent/10'}`}
+            className={`p-2 rounded-full transition-all ${isListening ? 'bg-red-500 text-white animate-pulse shadow-lg' : 'text-athlavix-accent hover:bg-athlavix-accent/10'}`}
           >
             <Mic size={20} />
           </button>
@@ -206,6 +274,14 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
             placeholder={isListening ? (sttLang === "en-US" ? "Listening..." : "শুনছি...") : (sttLang === "en-US" ? "Ask anything about your skin..." : "আপনার ত্বক সম্পর্কে কিছু জিজ্ঞাসা করুন...")}
             className="flex-1 bg-transparent border-none focus:ring-0 text-sm px-2 placeholder:text-athlavix-accent/30"
           />
+          {input && (
+            <button 
+              onClick={() => setInput("")}
+              className="p-1 text-athlavix-accent/30 hover:text-athlavix-accent transition-colors"
+            >
+              <X size={16} />
+            </button>
+          )}
           <button 
             onClick={handleSend}
             disabled={!input.trim() || isTyping}
