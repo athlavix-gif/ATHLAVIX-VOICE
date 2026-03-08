@@ -26,7 +26,8 @@ export const Progress: React.FC<ProgressProps> = ({ userState }) => {
     : 100;
 
   const challenges = [
-    { id: "daily_mask", name: "Try this mask today!", points: 20 },
+    { id: "daily_mask", name: "Try this mask today!", points: 20, target: 1 },
+    { id: "chat_3", name: "Chat 3 times today", points: 30, target: 3 },
   ];
 
   return (
@@ -96,9 +97,12 @@ export const Progress: React.FC<ProgressProps> = ({ userState }) => {
         <h4 className="font-bold text-athlavix-accent mb-4 flex items-center gap-2">
           <Zap size={18} /> Daily Challenges
         </h4>
-        <div className="space-y-3">
+        <div className="space-y-4">
           {challenges.map(challenge => {
             const isCompleted = userState.completedChallenges?.includes(challenge.id);
+            const currentProgress = userState.challengeProgress?.[challenge.id] || (isCompleted ? challenge.target : 0);
+            const progressPercent = Math.min((currentProgress / challenge.target) * 100, 100);
+
             return (
               <div 
                 key={challenge.id}
@@ -108,7 +112,7 @@ export const Progress: React.FC<ProgressProps> = ({ userState }) => {
                     : "bg-athlavix-accent/10 border-athlavix-accent/20 text-athlavix-accent"
                 }`}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mb-2">
                   <div>
                     <p className="text-sm font-bold">{challenge.name}</p>
                     <p className="text-[10px] opacity-70">+{challenge.points} points</p>
@@ -116,9 +120,19 @@ export const Progress: React.FC<ProgressProps> = ({ userState }) => {
                   {isCompleted ? (
                     <CheckCircle2 size={20} className="text-emerald-500" />
                   ) : (
-                    <div className="w-5 h-5 rounded-full border-2 border-athlavix-accent/30" />
+                    <span className="text-xs font-bold opacity-50">{currentProgress}/{challenge.target}</span>
                   )}
                 </div>
+                
+                {!isCompleted && (
+                  <div className="relative h-1.5 bg-white/30 rounded-full overflow-hidden border border-white/10">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${progressPercent}%` }}
+                      className="absolute top-0 left-0 h-full bg-athlavix-accent"
+                    />
+                  </div>
+                )}
               </div>
             );
           })}

@@ -4,6 +4,7 @@ import { Chat } from "./components/Chat";
 import { Progress } from "./components/Progress";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { Celebration } from "./components/Celebration";
+import { ProfileModal } from "./components/ProfileModal";
 import { getGeminiResponse } from "./services/geminiService";
 import { Sparkles, User as UserIcon, Settings, LogOut, Menu, X, Database } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -20,6 +21,7 @@ export default function App() {
   const [tempAvatar, setTempAvatar] = useState<string | null>(null);
   const [tempSkinType, setTempSkinType] = useState<SkinType | null>(null);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [celebration, setCelebration] = useState<{ isVisible: boolean; title: string; message: string; type: "badge" | "challenge" | "level" }>({
     isVisible: false,
     title: "",
@@ -73,12 +75,14 @@ export default function App() {
         name: tempName.trim(),
         whatsapp: tempWhatsapp.trim(),
         avatar: tempAvatar,
+        botAvatar: null,
         skinType: tempSkinType,
         concerns: [],
         points: 0,
         level: 1,
         badges: [],
         completedChallenges: [],
+        challengeProgress: {},
         history: [{
           role: "model",
           text: `ATHLAVIX VOICE activated! Ready to glow, ${tempName}? 😊`,
@@ -137,6 +141,19 @@ export default function App() {
       }
     }
 
+    // Multi-step challenge: Chat 3 times
+    if (!nextState.completedChallenges.includes("chat_3")) {
+      const currentProgress = nextState.challengeProgress["chat_3"] || 0;
+      const newProgress = currentProgress + 1;
+      nextState.challengeProgress = { ...nextState.challengeProgress, chat_3: newProgress };
+      
+      if (newProgress >= 3) {
+        nextState.completedChallenges.push("chat_3");
+        nextState.points += 30;
+        setCelebration({ isVisible: true, title: "Challenge Completed! 💬", message: "You've chatted 3 times today! +30 points! 💖", type: "challenge" });
+      }
+    }
+
     setUserState(nextState);
     setIsTyping(true);
 
@@ -151,6 +168,13 @@ export default function App() {
     } finally {
       setIsTyping(false);
     }
+  };
+
+  const handleUpdateProfile = (updatedData: Partial<UserState>) => {
+    if (!userState) return;
+    const newState = { ...userState, ...updatedData };
+    setUserState(newState);
+    saveUser(newState);
   };
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -256,6 +280,12 @@ export default function App() {
         message={celebration.message}
         type={celebration.type}
       />
+      <ProfileModal 
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        userState={userState}
+        onUpdate={handleUpdateProfile}
+      />
       {/* Mobile Header */}
       <div className="md:hidden p-4 flex items-center justify-between bg-white/20 backdrop-blur-sm border-b border-white/30">
         <div className="flex items-center gap-2">
@@ -302,9 +332,12 @@ export default function App() {
                 <Database size={20} />
                 <span className="font-medium">Customer Database</span>
               </button>
-              <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/20 text-athlavix-accent transition-colors">
+              <button 
+                onClick={() => setIsProfileOpen(true)}
+                className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/20 text-athlavix-accent transition-colors"
+              >
                 <Settings size={20} />
-                <span className="font-medium">Settings</span>
+                <span className="font-medium">Profile Settings</span>
               </button>
               <button 
                 onClick={() => {
@@ -329,6 +362,7 @@ export default function App() {
             onSendMessage={handleSendMessage}
             isTyping={isTyping}
             userAvatar={userState.avatar}
+            botAvatar={userState.botAvatar}
           />
         </div>
       </main>

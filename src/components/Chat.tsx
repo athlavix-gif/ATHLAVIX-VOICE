@@ -9,9 +9,10 @@ interface ChatProps {
   onSendMessage: (text: string) => void;
   isTyping: boolean;
   userAvatar: string | null;
+  botAvatar: string | null;
 }
 
-export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, userAvatar }) => {
+export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, userAvatar, botAvatar }) => {
   const [input, setInput] = useState("");
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -153,7 +154,9 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
               <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${msg.role === "user" ? "bg-white/50 text-athlavix-accent" : "bg-athlavix-accent text-white"}`}>
                 {msg.role === "user" ? (
                   userAvatar ? <img src={userAvatar} alt="User" className="w-full h-full object-cover" /> : <User size={16} />
-                ) : <Bot size={16} />}
+                ) : (
+                  botAvatar ? <img src={botAvatar} alt="Bot" className="w-full h-full object-cover" /> : <Bot size={16} />
+                )}
               </div>
               <div className={`max-w-[80%] p-4 rounded-2xl shadow-sm ${
                 msg.role === "user" 

@@ -23,12 +23,14 @@ export interface UserState {
   name: string;
   whatsapp: string;
   avatar: string | null;
+  botAvatar: string | null;
   skinType: SkinType | null;
   concerns: string[];
   points: number;
   level: number;
   badges: Badge[];
   completedChallenges: string[];
+  challengeProgress: Record<string, number>;
   history: Message[];
 }
 
