@@ -5,7 +5,7 @@ import { Progress } from "./components/Progress";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { Celebration } from "./components/Celebration";
 import { ProfileModal } from "./components/ProfileModal";
-import { getGeminiResponse } from "./services/geminiService";
+import { getGeminiResponse, getGeminiResponseStream } from "./services/geminiService";
 import { Sparkles, User as UserIcon, Settings, LogOut, Menu, X, Database } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -85,7 +85,7 @@ export default function App() {
         challengeProgress: {},
         history: [{
           role: "model",
-          text: `ATHLAVIX VOICE activated! Ready to glow, ${tempName}? 😊`,
+          text: `Hello ${tempName}! I'm here to help you with your skin journey today. 😊`,
           timestamp: Date.now()
         }],
       };
@@ -96,17 +96,19 @@ export default function App() {
     }
   };
 
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, image?: string) => {
     if (!userState) return;
 
-    const userMsg: Message = { role: "user", text, timestamp: Date.now() };
+    const userMsg: Message = { role: "user", text, image, timestamp: Date.now() };
     const updatedHistory = [...userState.history, userMsg];
     
     // Optimistic update
     const nextState = { 
       ...userState, 
       history: updatedHistory,
-      points: userState.points + 10 // 10 points per interaction
+      points: userState.points + 10, // 10 points per interaction
+      completedChallenges: userState.completedChallenges || [],
+      challengeProgress: userState.challengeProgress || {}
     };
     
     // Check for level up and badges
@@ -158,11 +160,36 @@ export default function App() {
     setIsTyping(true);
 
     try {
-      const aiResponse = await getGeminiResponse(nextState, text);
-      const modelMsg: Message = { role: "model", text: aiResponse, timestamp: Date.now() };
-      const finalState = { ...nextState, history: [...nextState.history, modelMsg] };
-      setUserState(finalState);
-      saveUser(finalState);
+      const stream = getGeminiResponseStream(nextState, text, image);
+      let fullResponse = "";
+      
+      // Add an initial empty message for the bot
+      const initialModelMsg: Message = { role: "model", text: "", timestamp: Date.now() };
+      setUserState(prev => prev ? { ...prev, history: [...prev.history, initialModelMsg] } : prev);
+
+      let isFirstChunk = true;
+      for await (const chunk of stream) {
+        if (isFirstChunk) {
+          setIsTyping(false);
+          isFirstChunk = false;
+        }
+        fullResponse += chunk;
+        setUserState(prev => {
+          if (!prev) return prev;
+          const updatedHistory = [...prev.history];
+          updatedHistory[updatedHistory.length - 1] = { 
+            ...updatedHistory[updatedHistory.length - 1], 
+            text: fullResponse 
+          };
+          return { ...prev, history: updatedHistory };
+        });
+      }
+      
+      // Final save
+      setUserState(prev => {
+        if (prev) saveUser(prev);
+        return prev;
+      });
     } catch (err) {
       console.error("AI Error:", err);
     } finally {

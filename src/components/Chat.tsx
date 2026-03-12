@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Message, UserState } from "../types";
-import { Send, Mic, Volume2, VolumeX, Sparkles, User, Bot, X } from "lucide-react";
+import { Send, Mic, Volume2, VolumeX, Sparkles, User, Bot, X, Image as ImageIcon, Camera } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import Markdown from "react-markdown";
+import { getGeminiSpeech } from "../services/geminiService";
 
 interface ChatProps {
   messages: Message[];
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, image?: string) => void;
   isTyping: boolean;
   userAvatar: string | null;
   botAvatar: string | null;
@@ -15,11 +16,14 @@ interface ChatProps {
 export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, userAvatar, botAvatar }) => {
   const [input, setInput] = useState("");
   const [interimInput, setInterimInput] = useState("");
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [sttLang, setSttLang] = useState<"en-US" | "bn-BD">("en-US");
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
@@ -96,33 +100,59 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
   }, [messages, isTyping]);
 
   const handleSend = () => {
-    if (input.trim()) {
-      onSendMessage(input.trim());
+    if (input.trim() || selectedImage) {
+      onSendMessage(input.trim(), selectedImage || undefined);
       setInput("");
+      setSelectedImage(null);
     }
   };
 
-  const speak = (text: string) => {
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const speak = async (text: string) => {
     if (!isVoiceEnabled) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    
+
+    // Stop existing audio if any
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
     // Detect if text contains Bengali characters
     const hasBengali = /[\u0980-\u09FF]/.test(text);
-    
-    // Try to find a nice voice
-    const voices = window.speechSynthesis.getVoices();
-    let preferredVoice;
-    
+
     if (hasBengali) {
-      preferredVoice = voices.find(v => v.lang.includes('bn'));
+      // Fallback to browser TTS for Bengali as Gemini TTS might not be optimized for it yet
+      const utterance = new SpeechSynthesisUtterance(text);
+      const voices = window.speechSynthesis.getVoices();
+      const preferredVoice = voices.find(v => v.lang.includes('bn'));
+      if (preferredVoice) utterance.voice = preferredVoice;
+      window.speechSynthesis.speak(utterance);
     } else {
-      preferredVoice = voices.find(v => v.lang.includes('en'));
+      // Use high-quality Gemini TTS for English
+      const audioData = await getGeminiSpeech(text);
+      if (audioData) {
+        const audio = new Audio(audioData);
+        audioRef.current = audio;
+        audio.play().catch(err => console.error("Audio playback error:", err));
+      } else {
+        // Fallback to browser TTS if Gemini TTS fails
+        const utterance = new SpeechSynthesisUtterance(text);
+        const voices = window.speechSynthesis.getVoices();
+        const preferredVoice = voices.find(v => v.lang.includes('en'));
+        if (preferredVoice) utterance.voice = preferredVoice;
+        window.speechSynthesis.speak(utterance);
+      }
     }
-    
-    if (preferredVoice) utterance.voice = preferredVoice;
-    else if (voices.length > 0) utterance.voice = voices[0];
-    
-    window.speechSynthesis.speak(utterance);
   };
 
   useEffect(() => {
@@ -219,6 +249,15 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
                         ? "bg-athlavix-accent text-white rounded-tr-none" 
                         : "bg-white/90 text-athlavix-text rounded-tl-none border border-white/50"
                     }`}>
+                      {msg.image && (
+                        <div className="mb-3 rounded-xl overflow-hidden border border-white/20 shadow-sm relative group">
+                          <img src={msg.image} alt="Skin Concern" className="w-full max-h-64 object-cover" />
+                          <div className="absolute top-2 left-2 px-2 py-1 bg-black/50 backdrop-blur-md rounded-full text-[8px] font-bold text-white uppercase tracking-widest flex items-center gap-1">
+                            <Sparkles size={10} className="text-athlavix-accent" />
+                            Skin Analysis
+                          </div>
+                        </div>
+                      )}
                       <div className="markdown-body text-sm leading-relaxed">
                         <Markdown>{msg.text}</Markdown>
                       </div>
@@ -250,6 +289,17 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
 
       {/* Input */}
       <div className="p-4 bg-white/30 border-t border-white/30 space-y-2">
+        {selectedImage && (
+          <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-athlavix-accent shadow-md">
+            <img src={selectedImage} alt="Preview" className="w-full h-full object-cover" />
+            <button 
+              onClick={() => setSelectedImage(null)}
+              className="absolute top-1 right-1 p-0.5 bg-athlavix-accent text-white rounded-full shadow-sm"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
         {isListening && interimInput && (
           <motion.div 
             initial={{ opacity: 0, y: 5 }}
@@ -260,6 +310,21 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
           </motion.div>
         )}
         <div className="flex items-center gap-2 bg-white/80 rounded-full p-2 shadow-inner border border-white/50">
+          <input 
+            type="file" 
+            ref={fileInputRef}
+            onChange={handleImageSelect}
+            accept="image/*"
+            className="hidden"
+          />
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-3 py-2 bg-athlavix-accent/10 text-athlavix-accent hover:bg-athlavix-accent/20 rounded-full transition-all group"
+            title="Upload skin photo for analysis"
+          >
+            <Camera size={20} className="group-hover:scale-110 transition-transform" />
+            <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Scan Skin</span>
+          </button>
           <button 
             onClick={toggleListening}
             className={`p-2 rounded-full transition-all ${isListening ? 'bg-red-500 text-white animate-pulse shadow-lg' : 'text-athlavix-accent hover:bg-athlavix-accent/10'}`}
@@ -284,7 +349,7 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
           )}
           <button 
             onClick={handleSend}
-            disabled={!input.trim() || isTyping}
+            disabled={(!input.trim() && !selectedImage) || isTyping}
             className="p-2 bg-athlavix-accent text-white rounded-full hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all shadow-md"
           >
             <Send size={18} />

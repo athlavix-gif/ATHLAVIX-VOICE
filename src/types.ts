@@ -6,6 +6,18 @@ export enum SkinType {
   SENSITIVE = "sensitive"
 }
 
+export const SKIN_CONCERNS = [
+  "Acne",
+  "Redness",
+  "Hyperpigmentation",
+  "Fine Lines",
+  "Dark Circles",
+  "Large Pores",
+  "Dryness",
+  "Dullness",
+  "Sensitivity"
+];
+
 export interface Badge {
   id: string;
   name: string;
@@ -15,6 +27,7 @@ export interface Badge {
 export interface Message {
   role: "user" | "model";
   text: string;
+  image?: string;
   timestamp: number;
 }
 

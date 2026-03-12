@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { UserState, SkinType } from "../types";
-import { X, Camera, Save, User, Phone, Bot, Sparkles, Loader2 } from "lucide-react";
+import { UserState, SkinType, SKIN_CONCERNS } from "../types";
+import { X, Camera, Save, User, Phone, Bot, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { GoogleGenAI } from "@google/genai";
 
@@ -19,6 +19,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
   const [avatar, setAvatar] = useState(userState.avatar);
   const [botAvatar, setBotAvatar] = useState(userState.botAvatar);
   const [skinType, setSkinType] = useState(userState.skinType);
+  const [concerns, setConcerns] = useState<string[]>(userState.concerns || []);
   const [isGenerating, setIsGenerating] = useState(false);
   const [botPrompt, setBotPrompt] = useState("A cute, friendly, Gen Z aesthetic girl avatar for a beauty and skincare brand, high quality, digital art, vibrant colors");
 
@@ -42,6 +43,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const toggleConcern = (concern: string) => {
+    setConcerns(prev => 
+      prev.includes(concern) 
+        ? prev.filter(c => c !== concern) 
+        : [...prev, concern]
+    );
   };
 
   const generateBotAvatar = async () => {
@@ -72,7 +81,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
       whatsapp,
       avatar,
       botAvatar,
-      skinType
+      skinType,
+      concerns
     });
     onClose();
   };
@@ -91,7 +101,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="glass-card max-w-md w-full p-8 space-y-6 relative"
+            className="glass-card max-w-lg w-full p-8 space-y-6 relative max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <button 
@@ -203,6 +213,26 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
                       }`}
                     >
                       {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-widest opacity-50">Skin Concerns / ত্বকের সমস্যা</label>
+                <div className="flex flex-wrap gap-2">
+                  {SKIN_CONCERNS.map((concern) => (
+                    <button
+                      key={concern}
+                      onClick={() => toggleConcern(concern)}
+                      className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border flex items-center gap-1.5 ${
+                        concerns.includes(concern)
+                          ? "bg-athlavix-accent text-white border-athlavix-accent"
+                          : "bg-athlavix-accent/5 text-athlavix-accent border-athlavix-accent/10 hover:bg-athlavix-accent/10"
+                      }`}
+                    >
+                      {concerns.includes(concern) && <CheckCircle2 size={10} />}
+                      {concern}
                     </button>
                   ))}
                 </div>
