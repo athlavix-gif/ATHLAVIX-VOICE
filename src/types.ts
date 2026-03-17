@@ -18,6 +18,18 @@ export const SKIN_CONCERNS = [
   "Sensitivity"
 ];
 
+export interface SkinAnalysis {
+  id: string;
+  timestamp: number;
+  image: string;
+  result: string;
+}
+
+export interface VoiceSettings {
+  preset: "soft" | "cheerful" | "calm";
+  speed: number;
+}
+
 export interface Badge {
   id: string;
   name: string;
@@ -45,6 +57,9 @@ export interface UserState {
   completedChallenges: string[];
   challengeProgress: Record<string, number>;
   history: Message[];
+  analysisHistory: SkinAnalysis[];
+  voiceSettings: VoiceSettings;
+  onboardingSeen: string[];
 }
 
 export const LEVELS = [

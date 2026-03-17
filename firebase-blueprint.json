@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A customer of Athlavix Voice",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique user ID" },
+        "name": { "type": "string", "description": "User's full name" },
+        "whatsapp": { "type": "string", "description": "User's WhatsApp/Phone number" },
+        "avatar": { "type": "string", "description": "URL to user's avatar image" },
+        "skinType": { "type": "string", "description": "User's skin type" },
+        "concerns": { "type": "array", "items": { "type": "string" }, "description": "User's skin concerns" },
+        "points": { "type": "integer", "description": "User's engagement points" },
+        "level": { "type": "integer", "description": "User's gamification level" },
+        "badges": { "type": "array", "items": { "type": "string" }, "description": "Badges earned by the user" },
+        "completedChallenges": { "type": "array", "items": { "type": "string" }, "description": "IDs of completed challenges" },
+        "history": { "type": "array", "description": "Chat history" },
+        "analysisHistory": { "type": "array", "description": "Skin analysis history" },
+        "voiceSettings": { "type": "object", "description": "User's voice preferences" },
+        "onboardingSeen": { "type": "array", "items": { "type": "string" }, "description": "Onboarding screens seen" }
+      },
+      "required": ["id", "name", "whatsapp"]
+    },
+    "Staff": {
+      "title": "Staff",
+      "description": "An authorized staff member",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique staff ID" },
+        "name": { "type": "string", "description": "Staff member's name" },
+        "role": { "type": "string", "description": "Staff member's role" },
+        "whatsapp": { "type": "string", "description": "Staff member's contact number" },
+        "created_at": { "type": "integer", "description": "Timestamp of creation" }
+      },
+      "required": ["id", "name", "role", "whatsapp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles"
+    },
+    "/staff/{staffId}": {
+      "schema": "Staff",
+      "description": "Collection of staff members"
+    }
+  }
+}

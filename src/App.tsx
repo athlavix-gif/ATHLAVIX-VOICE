@@ -6,16 +6,26 @@ import { AdminDashboard } from "./components/AdminDashboard";
 import { Celebration } from "./components/Celebration";
 import { ProfileModal } from "./components/ProfileModal";
 import { getGeminiResponse, getGeminiResponseStream } from "./services/geminiService";
-import { Sparkles, User as UserIcon, Settings, LogOut, Menu, X, Database } from "lucide-react";
+import { Sparkles, User as UserIcon, Settings, LogOut, Menu, X, Database, LogIn } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { auth, db } from "./firebase";
+import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from "firebase/auth";
+import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 
-const USER_ID_KEY = "athlavix_user_id";
+const ADMIN_NUMBERS = ["01906992400", "01605190849", "01912368278", "01922782203"];
+
+const isAdmin = (phone: string) => {
+  const normalized = phone.replace(/\D/g, "");
+  // Handle both local and international formats (e.g., 019... vs 88019...)
+  return ADMIN_NUMBERS.some(num => normalized.endsWith(num.replace(/\D/g, "")));
+};
 
 export default function App() {
   const [userState, setUserState] = useState<UserState | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isFirstTime, setIsFirstTime] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [tempName, setTempName] = useState("");
   const [tempWhatsapp, setTempWhatsapp] = useState("");
   const [tempAvatar, setTempAvatar] = useState<string | null>(null);
@@ -30,48 +40,67 @@ export default function App() {
   });
 
   useEffect(() => {
-    const loadUser = async () => {
-      const storedId = localStorage.getItem(USER_ID_KEY);
-      if (!storedId) {
-        setIsFirstTime(true);
-        return;
-      }
-
-      try {
-        const res = await fetch(`/api/user/${storedId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setUserState(data);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // User is signed in, fetch profile from Firestore
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          setUserState(userDoc.data() as UserState);
+          setIsFirstTime(false);
         } else {
-          // If ID exists in local but not in DB, reset
-          localStorage.removeItem(USER_ID_KEY);
+          // User exists in Auth but no profile in Firestore yet
           setIsFirstTime(true);
+          // Pre-fill from Google profile
+          setTempName(user.displayName || "");
+          setTempAvatar(user.photoURL || null);
         }
-      } catch (err) {
-        console.error("Failed to load user:", err);
-        setIsFirstTime(true);
+      } else {
+        // User is signed out
+        setUserState(null);
+        setIsFirstTime(false); // We'll show the login screen instead
       }
-    };
-    loadUser();
+      setIsAuthLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
+  // Real-time sync for user data
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    
+    const unsubscribe = onSnapshot(doc(db, "users", auth.currentUser.uid), (doc) => {
+      if (doc.exists()) {
+        setUserState(doc.data() as UserState);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [auth.currentUser]);
+
   const saveUser = async (state: UserState) => {
+    if (!auth.currentUser) return;
     try {
-      await fetch("/api/user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(state),
-      });
+      await setDoc(doc(db, "users", auth.currentUser.uid), state);
     } catch (err) {
-      console.error("Failed to save user:", err);
+      console.error("Failed to save user to Firestore:", err);
     }
   };
 
-  const handleInitialSetup = () => {
+  const handleGoogleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      console.error("Login failed:", err);
+    }
+  };
+
+  const handleInitialSetup = async () => {
+    if (!auth.currentUser) return;
     if (tempName.trim() && tempWhatsapp.trim()) {
-      const newUserId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const newState: UserState = {
-        id: newUserId,
+        id: auth.currentUser.uid,
         name: tempName.trim(),
         whatsapp: tempWhatsapp.trim(),
         avatar: tempAvatar,
@@ -88,11 +117,13 @@ export default function App() {
           text: `Hello ${tempName}! I'm here to help you with your skin journey today. 😊`,
           timestamp: Date.now()
         }],
+        analysisHistory: [],
+        voiceSettings: { preset: "soft", speed: 1 },
+        onboardingSeen: []
       };
+      await saveUser(newState);
       setUserState(newState);
       setIsFirstTime(false);
-      localStorage.setItem(USER_ID_KEY, newUserId);
-      saveUser(newState);
     }
   };
 
@@ -185,6 +216,23 @@ export default function App() {
         });
       }
       
+      // If there was an image, record it in analysis history
+      if (image) {
+        setUserState(prev => {
+          if (!prev) return prev;
+          const newAnalysis = {
+            id: `analysis_${Date.now()}`,
+            timestamp: Date.now(),
+            image: image,
+            result: fullResponse
+          };
+          return {
+            ...prev,
+            analysisHistory: [newAnalysis, ...prev.analysisHistory]
+          };
+        });
+      }
+
       // Final save
       setUserState(prev => {
         if (prev) saveUser(prev);
@@ -204,6 +252,28 @@ export default function App() {
     saveUser(newState);
   };
 
+  const handleClearHistory = () => {
+    if (!userState) return;
+    const initialMsg: Message = {
+      role: "model",
+      text: `Hello ${userState.name}! I've cleared our history. How can I help you with your skin journey now? 😊`,
+      timestamp: Date.now()
+    };
+    const newState = { ...userState, history: [initialMsg] };
+    setUserState(newState);
+    saveUser(newState);
+  };
+
+  const handleOnboardingSeen = (tipId: string) => {
+    if (!userState || userState.onboardingSeen.includes(tipId)) return;
+    const newState = { 
+      ...userState, 
+      onboardingSeen: [...userState.onboardingSeen, tipId] 
+    };
+    setUserState(newState);
+    saveUser(newState);
+  };
+
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -214,6 +284,42 @@ export default function App() {
       reader.readAsDataURL(file);
     }
   };
+
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-athlavix-bg">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-athlavix-accent"></div>
+      </div>
+    );
+  }
+
+  if (!auth.currentUser) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-athlavix-bg">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-card max-w-md w-full p-8 space-y-8 text-center"
+        >
+          <div className="space-y-2">
+            <div className="w-20 h-20 bg-athlavix-accent rounded-full flex items-center justify-center text-white mx-auto shadow-xl">
+              <Sparkles size={40} />
+            </div>
+            <h1 className="text-3xl font-bold text-athlavix-accent">ATHLAVIX VOICE</h1>
+            <p className="text-athlavix-accent/60 font-medium">Your personal AI beauty coach. Permanent storage enabled. ✨</p>
+          </div>
+          
+          <button 
+            onClick={handleGoogleLogin}
+            className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 py-4 rounded-xl font-bold hover:bg-gray-50 transition-all shadow-sm"
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-6 h-6" />
+            Sign in with Google
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
 
   if (isFirstTime) {
     return (
@@ -352,13 +458,15 @@ export default function App() {
             </div>
 
             <div className="space-y-2 pt-6 border-t border-white/20">
-              <button 
-                onClick={() => setIsAdminOpen(true)}
-                className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/20 text-athlavix-accent transition-colors"
-              >
-                <Database size={20} />
-                <span className="font-medium">Customer Database</span>
-              </button>
+              {userState && isAdmin(userState.whatsapp) && (
+                <button 
+                  onClick={() => setIsAdminOpen(true)}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/20 text-athlavix-accent transition-colors"
+                >
+                  <Database size={20} />
+                  <span className="font-medium">Customer Database</span>
+                </button>
+              )}
               <button 
                 onClick={() => setIsProfileOpen(true)}
                 className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/20 text-athlavix-accent transition-colors"
@@ -368,8 +476,7 @@ export default function App() {
               </button>
               <button 
                 onClick={() => {
-                  localStorage.removeItem(USER_ID_KEY);
-                  window.location.reload();
+                  signOut(auth);
                 }}
                 className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/20 text-athlavix-accent transition-colors"
               >
@@ -387,9 +494,13 @@ export default function App() {
           <Chat 
             messages={userState.history} 
             onSendMessage={handleSendMessage}
+            onClearHistory={handleClearHistory}
+            onOnboardingSeen={handleOnboardingSeen}
+            onboardingSeen={userState.onboardingSeen}
             isTyping={isTyping}
             userAvatar={userState.avatar}
             botAvatar={userState.botAvatar}
+            voiceSettings={userState.voiceSettings}
           />
         </div>
       </main>

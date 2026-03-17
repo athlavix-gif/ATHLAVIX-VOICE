@@ -51,19 +51,29 @@ You're not just an AI; you're a comforting presence and an empathetic partner in
 Start every convo with a warm, respectful greeting.
 `;
 
-export async function getGeminiSpeech(text: string) {
+export async function getGeminiSpeech(text: string, voiceName: string = 'Kore', speed: number = 1, preset: string = 'soft') {
   try {
     // Strip emojis from text before sending to TTS
     const cleanText = text.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '');
 
+    const speedInstruction = speed !== 1 ? ` Speak at ${speed}x speed.` : "";
+    
+    const toneInstructions: Record<string, string> = {
+      soft: "very warm, soft, comforting, and human-like. Use a gentle, nurturing tone with natural pauses and soft articulation. It should feel like a caring friend whispering support.",
+      cheerful: "bright, friendly, and energetic. Use a lively, upbeat, and enthusiastic tone that radiates positivity and joy.",
+      calm: "peaceful, steady, and serene. Use a relaxed, grounded, and meditative tone with deep, natural breaths between phrases."
+    };
+
+    const toneInstruction = toneInstructions[preset] || toneInstructions.soft;
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Speak this in a very warm, soft, comforting, and human-like female voice. Use a gentle, nurturing tone with natural pauses: ${cleanText}` }] }],
+      contents: [{ parts: [{ text: `Speak this in a voice that is ${toneInstruction} Avoid any robotic or flat delivery. Prosody should be melodic, expressive, and deeply human.${speedInstruction} Text: ${cleanText}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Kore' }, // Kore is a warm female voice
+            prebuiltVoiceConfig: { voiceName }, // 'Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'
           },
         },
       },

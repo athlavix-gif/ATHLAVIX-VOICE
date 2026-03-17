@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Message, UserState } from "../types";
-import { Send, Mic, Volume2, VolumeX, Sparkles, User, Bot, X, Image as ImageIcon, Camera } from "lucide-react";
+import { Send, Mic, Volume2, VolumeX, Sparkles, User, Bot, X, Image as ImageIcon, Camera, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import Markdown from "react-markdown";
 import { getGeminiSpeech } from "../services/geminiService";
@@ -8,22 +8,47 @@ import { getGeminiSpeech } from "../services/geminiService";
 interface ChatProps {
   messages: Message[];
   onSendMessage: (text: string, image?: string) => void;
+  onClearHistory: () => void;
+  onOnboardingSeen: (tipId: string) => void;
+  onboardingSeen: string[];
   isTyping: boolean;
   userAvatar: string | null;
   botAvatar: string | null;
+  voiceSettings: UserState['voiceSettings'];
 }
 
-export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, userAvatar, botAvatar }) => {
+export const Chat: React.FC<ChatProps> = ({ 
+  messages, 
+  onSendMessage, 
+  onClearHistory, 
+  onOnboardingSeen,
+  onboardingSeen,
+  isTyping, 
+  userAvatar, 
+  botAvatar,
+  voiceSettings
+}) => {
   const [input, setInput] = useState("");
   const [interimInput, setInterimInput] = useState("");
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [sttLang, setSttLang] = useState<"en-US" | "bn-BD">("en-US");
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const [activeTip, setActiveTip] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!onboardingSeen.includes('image_upload') && !activeTip) {
+      const timer = setTimeout(() => setActiveTip('image_upload'), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [onboardingSeen]);
 
   useEffect(() => {
     if (typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
@@ -100,12 +125,26 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
   }, [messages, isTyping]);
 
   const handleSend = () => {
-    if (input.trim() || selectedImage) {
-      onSendMessage(input.trim(), selectedImage || undefined);
-      setInput("");
-      setSelectedImage(null);
+    if ((!input.trim() && !selectedImage) || isTyping || isAnalyzing) return;
+    
+    const text = input.trim();
+    const image = selectedImage || undefined;
+    
+    if (image) setIsAnalyzing(true);
+    
+    onSendMessage(text, image);
+    setInput("");
+    setSelectedImage(null);
+
+    if (image) {
+      onOnboardingSeen('image_upload');
+      setActiveTip(null);
     }
   };
+
+  useEffect(() => {
+    if (!isTyping) setIsAnalyzing(false);
+  }, [isTyping]);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -113,6 +152,7 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
       const reader = new FileReader();
       reader.onloadend = () => {
         setSelectedImage(reader.result as string);
+        if (activeTip === 'image_upload') setActiveTip(null);
       };
       reader.readAsDataURL(file);
     }
@@ -133,22 +173,46 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
     if (hasBengali) {
       // Fallback to browser TTS for Bengali as Gemini TTS might not be optimized for it yet
       const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = voiceSettings.speed;
+      
+      // Adjust pitch based on preset for a more expressive feel
+      if (voiceSettings.preset === 'cheerful') utterance.pitch = 1.2;
+      else if (voiceSettings.preset === 'calm') utterance.pitch = 0.8;
+      else utterance.pitch = 1.0;
+
       const voices = window.speechSynthesis.getVoices();
-      const preferredVoice = voices.find(v => v.lang.includes('bn'));
+      // Look for Bengali voices specifically
+      const preferredVoice = voices.find(v => v.lang.startsWith('bn')) || voices.find(v => v.lang.includes('Bengali'));
       if (preferredVoice) utterance.voice = preferredVoice;
+      
       window.speechSynthesis.speak(utterance);
     } else {
       // Use high-quality Gemini TTS for English
-      const audioData = await getGeminiSpeech(text);
-      if (audioData) {
-        const audio = new Audio(audioData);
-        audioRef.current = audio;
-        audio.play().catch(err => console.error("Audio playback error:", err));
-      } else {
+      try {
+        const voiceMap = {
+          soft: 'Kore',
+          cheerful: 'Zephyr',
+          calm: 'Charon'
+        };
+        const voiceName = voiceMap[voiceSettings.preset] || 'Kore';
+        const audioData = await getGeminiSpeech(text, voiceName, voiceSettings.speed, voiceSettings.preset);
+        if (audioData) {
+          const audio = new Audio(audioData);
+          audioRef.current = audio;
+          audio.play().catch(err => console.error("Audio playback error:", err));
+        } else {
+          throw new Error("No audio data");
+        }
+      } catch (error) {
+        console.error("Gemini TTS failed, falling back to browser:", error);
         // Fallback to browser TTS if Gemini TTS fails
         const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = voiceSettings.speed;
+        if (voiceSettings.preset === 'cheerful') utterance.pitch = 1.2;
+        else if (voiceSettings.preset === 'calm') utterance.pitch = 0.8;
+        
         const voices = window.speechSynthesis.getVoices();
-        const preferredVoice = voices.find(v => v.lang.includes('en'));
+        const preferredVoice = voices.find(v => v.lang.startsWith('en'));
         if (preferredVoice) utterance.voice = preferredVoice;
         window.speechSynthesis.speak(utterance);
       }
@@ -177,7 +241,7 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
   return (
     <div className="flex flex-col h-full glass-card overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-white/30 flex items-center justify-between bg-athlavix-accent/10">
+      <div className="p-4 border-b border-white/30 flex items-center justify-between bg-athlavix-accent/10 relative">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-athlavix-accent flex items-center justify-center text-white shadow-lg">
             <Sparkles size={20} />
@@ -205,10 +269,49 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
           <button 
             onClick={() => setIsVoiceEnabled(!isVoiceEnabled)}
             className={`p-2 rounded-full transition-all ${isVoiceEnabled ? 'bg-athlavix-accent text-white shadow-md' : 'bg-white/50 text-athlavix-accent'}`}
+            title={isVoiceEnabled ? "Disable Voice" : "Enable Voice"}
           >
             {isVoiceEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
           </button>
+          <button 
+            onClick={() => setShowClearConfirm(true)}
+            className="p-2 rounded-full bg-white/50 text-athlavix-accent hover:bg-red-50 hover:text-red-500 transition-all"
+            title="Clear Chat History"
+          >
+            <X size={20} />
+          </button>
         </div>
+
+        {/* Clear Confirmation Overlay */}
+        <AnimatePresence>
+          {showClearConfirm && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="absolute inset-0 z-10 bg-white/95 backdrop-blur-md flex items-center justify-between px-6"
+            >
+              <p className="text-xs font-bold text-athlavix-accent uppercase tracking-widest">Clear all messages?</p>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setShowClearConfirm(false)}
+                  className="px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest text-athlavix-accent/60 hover:bg-athlavix-accent/5 transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={() => {
+                    onClearHistory();
+                    setShowClearConfirm(false);
+                  }}
+                  className="px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-red-500 text-white shadow-md hover:bg-red-600 transition-all"
+                >
+                  Clear
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Messages */}
@@ -290,15 +393,38 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
       {/* Input */}
       <div className="p-4 bg-white/30 border-t border-white/30 space-y-2">
         {selectedImage && (
-          <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-athlavix-accent shadow-md">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative w-24 h-24 rounded-2xl overflow-hidden border-2 border-athlavix-accent shadow-xl group"
+          >
             <img src={selectedImage} alt="Preview" className="w-full h-full object-cover" />
             <button 
               onClick={() => setSelectedImage(null)}
-              className="absolute top-1 right-1 p-0.5 bg-athlavix-accent text-white rounded-full shadow-sm"
+              className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors"
             >
               <X size={12} />
             </button>
-          </div>
+            <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <p className="text-[8px] font-bold text-white uppercase tracking-widest">Ready to scan</p>
+            </div>
+          </motion.div>
+        )}
+
+        {isAnalyzing && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center gap-3 p-3 bg-athlavix-accent/10 rounded-2xl border border-athlavix-accent/20"
+          >
+            <div className="relative">
+              <Loader2 size={20} className="animate-spin text-athlavix-accent" />
+              <div className="absolute inset-0 animate-ping bg-athlavix-accent/20 rounded-full" />
+            </div>
+            <p className="text-xs font-bold text-athlavix-accent uppercase tracking-widest animate-pulse">
+              Analyzing your skin... / আপনার ত্বক বিশ্লেষণ করা হচ্ছে...
+            </p>
+          </motion.div>
         )}
         {isListening && interimInput && (
           <motion.div 
@@ -317,14 +443,42 @@ export const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isTyping, u
             accept="image/*"
             className="hidden"
           />
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 px-3 py-2 bg-athlavix-accent/10 text-athlavix-accent hover:bg-athlavix-accent/20 rounded-full transition-all group"
-            title="Upload skin photo for analysis"
-          >
-            <Camera size={20} className="group-hover:scale-110 transition-transform" />
-            <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Scan Skin</span>
-          </button>
+          <div className="relative">
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 px-3 py-2 bg-athlavix-accent/10 text-athlavix-accent hover:bg-athlavix-accent/20 rounded-full transition-all group"
+              title="Upload skin photo for analysis"
+            >
+              <Camera size={20} className="group-hover:scale-110 transition-transform" />
+              <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Scan Skin</span>
+            </button>
+
+            {/* Onboarding Tip */}
+            <AnimatePresence>
+              {activeTip === 'image_upload' && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="absolute bottom-full left-0 mb-4 w-48 p-3 bg-athlavix-accent text-white rounded-2xl shadow-2xl z-50"
+                >
+                  <div className="absolute bottom-[-6px] right-4 w-3 h-3 bg-athlavix-accent rotate-45" />
+                  <p className="text-[10px] font-bold leading-tight">
+                    ✨ Scan your skin! Upload a photo for instant analysis.
+                  </p>
+                  <button 
+                    onClick={() => {
+                      onOnboardingSeen('image_upload');
+                      setActiveTip(null);
+                    }}
+                    className="mt-2 text-[8px] uppercase tracking-widest font-black opacity-70 hover:opacity-100"
+                  >
+                    Got it!
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           <button 
             onClick={toggleListening}
             className={`p-2 rounded-full transition-all ${isListening ? 'bg-red-500 text-white animate-pulse shadow-lg' : 'text-athlavix-accent hover:bg-athlavix-accent/10'}`}
