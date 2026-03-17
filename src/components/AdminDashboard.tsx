@@ -13,8 +13,6 @@ import {
   Filter
 } from "lucide-react";
 import { UserState } from "../types";
-import { db, auth } from "../firebase";
-import { collection, getDocs, query, orderBy, addDoc, deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
 
 interface Staff {
   id: string;
@@ -41,22 +39,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
   const [isAuthorized, setIsAuthorized] = useState(false);
 
   useEffect(() => {
+    const checkAuth = () => {
+      const storedId = localStorage.getItem("athlavix_user_id");
+      if (!storedId) return false;
+      
+      // We'll verify against the current user's number from the database or local state
+      // For simplicity and immediate feedback, we'll fetch the user data first
+      return true; // We will handle this in the fetchData
+    };
+    
     fetchData();
   }, []);
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      if (!auth.currentUser) return;
+      const storedId = localStorage.getItem("athlavix_user_id");
+      const userRes = await fetch(`/api/user/${storedId}`);
+      const currentUser = await userRes.json();
       
-      const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
-      if (!userDoc.exists()) {
-        alert("Unauthorized access.");
-        onClose();
-        return;
-      }
-      
-      const currentUser = userDoc.data() as UserState;
       const normalized = currentUser.whatsapp.replace(/\D/g, "");
       const authorized = ADMIN_NUMBERS.some(num => normalized.endsWith(num.replace(/\D/g, "")));
       
@@ -68,14 +69,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
       
       setIsAuthorized(true);
 
-      const [usersSnap, staffSnap] = await Promise.all([
-        getDocs(collection(db, "users")),
-        getDocs(query(collection(db, "staff"), orderBy("created_at", "desc")))
+      const [usersRes, staffRes] = await Promise.all([
+        fetch("/api/admin/users"),
+        fetch("/api/admin/staff")
       ]);
-      
-      const usersData = usersSnap.docs.map(doc => doc.data() as UserState);
-      const staffData = staffSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Staff));
-      
+      const usersData = await usersRes.json();
+      const staffData = await staffRes.json();
       setUsers(usersData);
       setStaff(staffData);
     } catch (error) {
@@ -88,18 +87,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const staffId = `staff_${Date.now()}`;
-      const staffData = {
-        ...newStaff,
-        id: staffId,
-        created_at: Date.now()
-      };
-      
-      await setDoc(doc(db, "staff", staffId), staffData);
-      
-      setNewStaff({ name: "", role: "", whatsapp: "" });
-      setIsAddingStaff(false);
-      fetchData();
+      const res = await fetch("/api/admin/staff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newStaff)
+      });
+      if (res.ok) {
+        setNewStaff({ name: "", role: "", whatsapp: "" });
+        setIsAddingStaff(false);
+        fetchData();
+      }
     } catch (error) {
       console.error("Failed to add staff:", error);
     }
@@ -108,7 +105,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
   const handleDeleteStaff = async (id: string) => {
     if (!confirm("Are you sure you want to remove this staff member?")) return;
     try {
-      await deleteDoc(doc(db, "staff", id));
+      await fetch(`/api/admin/staff/${id}`, { method: "DELETE" });
       fetchData();
     } catch (error) {
       console.error("Failed to delete staff:", error);

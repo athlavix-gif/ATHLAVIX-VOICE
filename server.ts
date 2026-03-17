@@ -1,20 +1,176 @@
 import express from "express";
-import path from "path";
 import { createServer as createViteServer } from "vite";
+import Database from "better-sqlite3";
+import path from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const db = new Database("athlavix.db");
+
+// Initialize database
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    whatsapp TEXT,
+    avatar TEXT,
+    skin_type TEXT,
+    concerns TEXT,
+    points INTEGER DEFAULT 0,
+    level INTEGER DEFAULT 1,
+    badges TEXT DEFAULT '[]',
+    completed_challenges TEXT DEFAULT '[]',
+    history TEXT DEFAULT '[]'
+  );
+
+  CREATE TABLE IF NOT EXISTS staff (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    role TEXT,
+    whatsapp TEXT,
+    created_at INTEGER
+  );
+`);
+
+// Migration: Add avatar column if it doesn't exist
+try {
+  db.exec("ALTER TABLE users ADD COLUMN avatar TEXT");
+} catch (e) {
+  // Column probably already exists
+}
+
+// Migration: Add completed_challenges column if it doesn't exist
+try {
+  db.exec("ALTER TABLE users ADD COLUMN completed_challenges TEXT DEFAULT '[]'");
+} catch (e) {
+  // Column probably already exists
+}
+
+// Migration: Add analysis_history, voice_settings, and onboarding_seen columns
+try {
+  db.exec("ALTER TABLE users ADD COLUMN analysis_history TEXT DEFAULT '[]'");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE users ADD COLUMN voice_settings TEXT DEFAULT '{\"preset\":\"soft\",\"speed\":1}'");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE users ADD COLUMN onboarding_seen TEXT DEFAULT '[]'");
+} catch (e) {}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json({ limit: "50mb" }));
+  app.use(express.json({ limit: '50mb' })); // Increase limit for images
 
-  // API routes (if any needed in future)
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+  // API Routes
+  app.get("/api/user/:id", (req, res) => {
+    const { id } = req.params;
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as any;
+    if (user) {
+      res.json({
+        ...user,
+        skinType: user.skin_type,
+        concerns: JSON.parse(user.concerns || "[]"),
+        badges: JSON.parse(user.badges || "[]"),
+        completedChallenges: JSON.parse(user.completed_challenges || "[]"),
+        history: JSON.parse(user.history || "[]"),
+        analysisHistory: JSON.parse(user.analysis_history || "[]"),
+        voiceSettings: JSON.parse(user.voice_settings || "{\"preset\":\"soft\",\"speed\":1}"),
+        onboardingSeen: JSON.parse(user.onboarding_seen || "[]")
+      });
+    } else {
+      res.status(404).json({ error: "User not found" });
+    }
+  });
+
+  // Admin Route: Get all users
+  app.get("/api/admin/users", (req, res) => {
+    const users = db.prepare("SELECT * FROM users").all() as any[];
+    res.json(users.map(user => ({
+      ...user,
+      skinType: user.skin_type,
+      concerns: JSON.parse(user.concerns || "[]"),
+      badges: JSON.parse(user.badges || "[]"),
+      completedChallenges: JSON.parse(user.completed_challenges || "[]"),
+      history: JSON.parse(user.history || "[]"),
+      analysisHistory: JSON.parse(user.analysis_history || "[]"),
+      voiceSettings: JSON.parse(user.voice_settings || "{\"preset\":\"soft\",\"speed\":1}"),
+      onboardingSeen: JSON.parse(user.onboarding_seen || "[]")
+    })));
+  });
+
+  // Staff Routes
+  app.get("/api/admin/staff", (req, res) => {
+    const staff = db.prepare("SELECT * FROM staff ORDER BY created_at DESC").all();
+    res.json(staff);
+  });
+
+  app.post("/api/admin/staff", (req, res) => {
+    const { name, role, whatsapp } = req.body;
+    const id = `staff_${Date.now()}`;
+    const stmt = db.prepare("INSERT INTO staff (id, name, role, whatsapp, created_at) VALUES (?, ?, ?, ?, ?)");
+    stmt.run(id, name, role, whatsapp, Date.now());
+    res.json({ success: true, id });
+  });
+
+  app.delete("/api/admin/staff/:id", (req, res) => {
+    const { id } = req.params;
+    db.prepare("DELETE FROM staff WHERE id = ?").run(id);
+    res.json({ success: true });
+  });
+
+  app.post("/api/user", (req, res) => {
+    const { 
+      id, name, whatsapp, avatar, skinType, concerns, points, level, 
+      badges, completedChallenges, history, analysisHistory, voiceSettings, onboardingSeen 
+    } = req.body;
+    
+    const stmt = db.prepare(`
+      INSERT INTO users (
+        id, name, whatsapp, avatar, skin_type, concerns, points, level, 
+        badges, completed_challenges, history, analysis_history, voice_settings, onboarding_seen
+      )
+      VALUES (
+        @id, @name, @whatsapp, @avatar, @skin_type, @concerns, @points, @level, 
+        @badges, @completed_challenges, @history, @analysis_history, @voice_settings, @onboarding_seen
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        whatsapp = excluded.whatsapp,
+        avatar = excluded.avatar,
+        skin_type = excluded.skin_type,
+        concerns = excluded.concerns,
+        points = excluded.points,
+        level = excluded.level,
+        badges = excluded.badges,
+        completed_challenges = excluded.completed_challenges,
+        history = excluded.history,
+        analysis_history = excluded.analysis_history,
+        voice_settings = excluded.voice_settings,
+        onboarding_seen = excluded.onboarding_seen
+    `);
+    
+    stmt.run({
+      id,
+      name,
+      whatsapp: whatsapp || "",
+      avatar: avatar || null,
+      skin_type: skinType || null,
+      concerns: JSON.stringify(concerns || []),
+      points: points || 0,
+      level: level || 1,
+      badges: JSON.stringify(badges || []),
+      completed_challenges: JSON.stringify(completedChallenges || []),
+      history: JSON.stringify(history || []),
+      analysis_history: JSON.stringify(analysisHistory || []),
+      voice_settings: JSON.stringify(voiceSettings || { preset: "soft", speed: 1 }),
+      onboarding_seen: JSON.stringify(onboardingSeen || [])
+    });
+    
+    res.json({ success: true });
   });
 
   // Vite middleware for development
@@ -25,10 +181,9 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    app.use(express.static(path.join(__dirname, "dist")));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      res.sendFile(path.join(__dirname, "dist", "index.html"));
     });
   }
 
