@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Message, UserState } from "../types";
-import { Send, Mic, Volume2, VolumeX, Sparkles, User, Bot, X, Image as ImageIcon, Camera, Loader2 } from "lucide-react";
+import { Send, Mic, Volume2, VolumeX, Sparkles, User, Bot, X, Image as ImageIcon, Camera, Loader2, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import Markdown from "react-markdown";
 import { getGeminiSpeech } from "../services/geminiService";
 
 interface ChatProps {
   messages: Message[];
+  analysisHistory: UserState['analysisHistory'];
   onSendMessage: (text: string, image?: string) => void;
   onClearHistory: () => void;
   onOnboardingSeen: (tipId: string) => void;
@@ -19,6 +20,7 @@ interface ChatProps {
 
 export const Chat: React.FC<ChatProps> = ({ 
   messages, 
+  analysisHistory,
   onSendMessage, 
   onClearHistory, 
   onOnboardingSeen,
@@ -36,6 +38,8 @@ export const Chat: React.FC<ChatProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [sttLang, setSttLang] = useState<"en-US" | "bn-BD">("en-US");
+  const [view, setView] = useState<"chat" | "history">("chat");
+  const [selectedAnalysis, setSelectedAnalysis] = useState<UserState['analysisHistory'][0] | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -254,6 +258,20 @@ export const Chat: React.FC<ChatProps> = ({
         <div className="flex items-center gap-2">
           <div className="flex bg-white/50 rounded-lg p-1 border border-athlavix-accent/10">
             <button 
+              onClick={() => setView("chat")}
+              className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${view === "chat" ? "bg-athlavix-accent text-white shadow-sm" : "text-athlavix-accent/60 hover:text-athlavix-accent"}`}
+            >
+              CHAT
+            </button>
+            <button 
+              onClick={() => setView("history")}
+              className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${view === "history" ? "bg-athlavix-accent text-white shadow-sm" : "text-athlavix-accent/60 hover:text-athlavix-accent"}`}
+            >
+              HISTORY
+            </button>
+          </div>
+          <div className="flex bg-white/50 rounded-lg p-1 border border-athlavix-accent/10">
+            <button 
               onClick={() => setSttLang("en-US")}
               className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${sttLang === "en-US" ? "bg-athlavix-accent text-white shadow-sm" : "text-athlavix-accent/60 hover:text-athlavix-accent"}`}
             >
@@ -276,9 +294,9 @@ export const Chat: React.FC<ChatProps> = ({
           <button 
             onClick={() => setShowClearConfirm(true)}
             className="p-2 rounded-full bg-white/50 text-athlavix-accent hover:bg-red-50 hover:text-red-500 transition-all"
-            title="Clear Chat History"
+            title="Clear All History"
           >
-            <X size={20} />
+            <Trash2 size={20} />
           </button>
         </div>
 
@@ -291,7 +309,7 @@ export const Chat: React.FC<ChatProps> = ({
               exit={{ opacity: 0, y: -10 }}
               className="absolute inset-0 z-10 bg-white/95 backdrop-blur-md flex items-center justify-between px-6"
             >
-              <p className="text-xs font-bold text-athlavix-accent uppercase tracking-widest">Clear all messages?</p>
+              <p className="text-xs font-bold text-athlavix-accent uppercase tracking-widest">Clear all history?</p>
               <div className="flex gap-2">
                 <button 
                   onClick={() => setShowClearConfirm(false)}
@@ -314,81 +332,191 @@ export const Chat: React.FC<ChatProps> = ({
         </AnimatePresence>
       </div>
 
-      {/* Messages */}
+      {/* Messages or History */}
       <div 
         ref={scrollRef}
         className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth"
       >
-        <AnimatePresence>
-          {messages.map((msg, idx) => {
-            const prevMsg = messages[idx - 1];
-            const showDateSeparator = !prevMsg || 
-              new Date(prevMsg.timestamp).toDateString() !== new Date(msg.timestamp).toDateString();
-            
-            return (
-              <React.Fragment key={idx}>
-                {showDateSeparator && (
-                  <div className="flex justify-center my-4">
-                    <span className="px-3 py-1 rounded-full bg-athlavix-accent/5 text-[10px] font-bold uppercase tracking-widest text-athlavix-accent/40 border border-athlavix-accent/5">
-                      {formatDateSeparator(new Date(msg.timestamp))}
-                    </span>
-                  </div>
-                )}
-                <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  className={`flex items-start gap-4 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
-                >
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden shadow-md border-2 ${msg.role === "user" ? "bg-white text-athlavix-accent border-white" : "bg-athlavix-accent text-white border-athlavix-accent/20"}`}>
-                    {msg.role === "user" ? (
-                      userAvatar ? <img src={userAvatar} alt="User" className="w-full h-full object-cover" /> : <User size={20} />
-                    ) : (
-                      botAvatar ? <img src={botAvatar} alt="Bot" className="w-full h-full object-cover" /> : <Bot size={20} />
+        {view === "chat" ? (
+          <>
+            <AnimatePresence>
+              {messages.map((msg, idx) => {
+                const prevMsg = messages[idx - 1];
+                const showDateSeparator = !prevMsg || 
+                  new Date(prevMsg.timestamp).toDateString() !== new Date(msg.timestamp).toDateString();
+                
+                return (
+                  <React.Fragment key={idx}>
+                    {showDateSeparator && (
+                      <div className="flex justify-center my-4">
+                        <span className="px-3 py-1 rounded-full bg-athlavix-accent/5 text-[10px] font-bold uppercase tracking-widest text-athlavix-accent/40 border border-athlavix-accent/5">
+                          {formatDateSeparator(new Date(msg.timestamp))}
+                        </span>
+                      </div>
                     )}
-                  </div>
-                  <div className={`max-w-[75%] space-y-1 ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                    <div className={`p-4 rounded-2xl shadow-sm ${
-                      msg.role === "user" 
-                        ? "bg-athlavix-accent text-white rounded-tr-none" 
-                        : "bg-white/90 text-athlavix-text rounded-tl-none border border-white/50"
-                    }`}>
-                      {msg.image && (
-                        <div className="mb-3 rounded-xl overflow-hidden border border-white/20 shadow-sm relative group">
-                          <img src={msg.image} alt="Skin Concern" className="w-full max-h-64 object-cover" />
-                          <div className="absolute top-2 left-2 px-2 py-1 bg-black/50 backdrop-blur-md rounded-full text-[8px] font-bold text-white uppercase tracking-widest flex items-center gap-1">
-                            <Sparkles size={10} className="text-athlavix-accent" />
-                            Skin Analysis
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      className={`flex items-start gap-4 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
+                    >
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden shadow-md border-2 ${msg.role === "user" ? "bg-white text-athlavix-accent border-white" : "bg-athlavix-accent text-white border-athlavix-accent/20"}`}>
+                        {msg.role === "user" ? (
+                          userAvatar ? <img src={userAvatar} alt="User" className="w-full h-full object-cover" /> : <User size={20} />
+                        ) : (
+                          botAvatar ? <img src={botAvatar} alt="Bot" className="w-full h-full object-cover" /> : <Bot size={20} />
+                        )}
+                      </div>
+                      <div className={`max-w-[75%] space-y-1 ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                        <div className={`p-4 rounded-2xl shadow-sm ${
+                          msg.role === "user" 
+                            ? "bg-athlavix-accent text-white rounded-tr-none" 
+                            : "bg-white/90 text-athlavix-text rounded-tl-none border border-white/50"
+                        }`}>
+                          {msg.image && (
+                            <div className="mb-3 rounded-xl overflow-hidden border border-white/20 shadow-sm relative group">
+                              <img src={msg.image} alt="Skin Concern" className="w-full max-h-64 object-cover" />
+                              <div className="absolute top-2 left-2 px-2 py-1 bg-black/50 backdrop-blur-md rounded-full text-[8px] font-bold text-white uppercase tracking-widest flex items-center gap-1">
+                                <Sparkles size={10} className="text-athlavix-accent" />
+                                Skin Analysis
+                              </div>
+                            </div>
+                          )}
+                          <div className="markdown-body text-sm leading-relaxed">
+                            <Markdown>{msg.text}</Markdown>
                           </div>
                         </div>
-                      )}
-                      <div className="markdown-body text-sm leading-relaxed">
-                        <Markdown>{msg.text}</Markdown>
+                        <p className={`text-[9px] font-bold uppercase tracking-widest opacity-40 px-1 ${msg.role === "user" ? "text-right" : "text-left"}`}>
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </motion.div>
+                  </React.Fragment>
+                );
+              })}
+            </AnimatePresence>
+            {isTyping && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex items-center gap-2 text-athlavix-accent/50 text-xs font-medium"
+              >
+                <div className="flex gap-1">
+                  <span className="w-1.5 h-1.5 bg-athlavix-accent rounded-full animate-bounce" />
+                  <span className="w-1.5 h-1.5 bg-athlavix-accent rounded-full animate-bounce [animation-delay:0.2s]" />
+                  <span className="w-1.5 h-1.5 bg-athlavix-accent rounded-full animate-bounce [animation-delay:0.4s]" />
+                </div>
+                ATHLAVIX is thinking...
+              </motion.div>
+            )}
+          </>
+        ) : (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-athlavix-accent uppercase tracking-widest">Past Skin Analyses</h3>
+              <p className="text-[10px] font-bold text-athlavix-accent/40 uppercase tracking-widest">{analysisHistory.length} Total</p>
+            </div>
+            
+            {analysisHistory.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+                <div className="w-16 h-16 rounded-full bg-athlavix-accent/5 flex items-center justify-center text-athlavix-accent/20">
+                  <ImageIcon size={32} />
+                </div>
+                <p className="text-xs font-medium text-athlavix-accent/40">No analysis history yet. Try scanning your skin!</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {analysisHistory.map((analysis) => (
+                  <motion.div
+                    key={analysis.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white/60 border border-white/50 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer group"
+                    onClick={() => setSelectedAnalysis(analysis)}
+                  >
+                    <div className="flex gap-4 p-4">
+                      <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-athlavix-accent/10">
+                        <img src={analysis.image} alt="Analysis" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="flex-1 min-w-0 flex flex-col justify-center">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[9px] font-bold text-athlavix-accent/40 uppercase tracking-widest">
+                            {new Date(analysis.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                          <span className="text-[9px] font-bold text-athlavix-accent/40 uppercase tracking-widest">
+                            {new Date(analysis.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <p className="text-xs font-medium text-athlavix-text line-clamp-2 opacity-80">
+                          {analysis.result.substring(0, 100)}...
+                        </p>
+                        <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-athlavix-accent uppercase tracking-widest group-hover:translate-x-1 transition-transform">
+                          View Details <Sparkles size={10} />
+                        </div>
                       </div>
                     </div>
-                    <p className={`text-[9px] font-bold uppercase tracking-widest opacity-40 px-1 ${msg.role === "user" ? "text-right" : "text-left"}`}>
-                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                </motion.div>
-              </React.Fragment>
-            );
-          })}
-        </AnimatePresence>
-        {isTyping && (
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Analysis Detail Modal */}
+      <AnimatePresence>
+        {selectedAnalysis && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex items-center gap-2 text-athlavix-accent/50 text-xs font-medium"
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+            onClick={() => setSelectedAnalysis(null)}
           >
-            <div className="flex gap-1">
-              <span className="w-1.5 h-1.5 bg-athlavix-accent rounded-full animate-bounce" />
-              <span className="w-1.5 h-1.5 bg-athlavix-accent rounded-full animate-bounce [animation-delay:0.2s]" />
-              <span className="w-1.5 h-1.5 bg-athlavix-accent rounded-full animate-bounce [animation-delay:0.4s]" />
-            </div>
-            ATHLAVIX is thinking...
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="relative h-64 sm:h-80 shrink-0">
+                <img src={selectedAnalysis.image} alt="Analysis" className="w-full h-full object-cover" />
+                <button 
+                  onClick={() => setSelectedAnalysis(null)}
+                  className="absolute top-4 right-4 p-2 bg-black/20 hover:bg-black/40 backdrop-blur-md text-white rounded-full transition-all"
+                >
+                  <X size={20} />
+                </button>
+                <div className="absolute bottom-4 left-4 px-4 py-2 bg-athlavix-accent/90 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2 shadow-lg">
+                  <Sparkles size={14} />
+                  Analysis Result
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-8 space-y-6">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-athlavix-accent">Skin Analysis Report</h3>
+                    <p className="text-[10px] font-bold text-athlavix-accent/40 uppercase tracking-widest">
+                      {new Date(selectedAnalysis.timestamp).toLocaleString([], { dateStyle: 'long', timeStyle: 'short' })}
+                    </p>
+                  </div>
+                </div>
+                <div className="markdown-body text-sm leading-relaxed text-athlavix-text">
+                  <Markdown>{selectedAnalysis.result}</Markdown>
+                </div>
+              </div>
+              <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end">
+                <button 
+                  onClick={() => setSelectedAnalysis(null)}
+                  className="px-8 py-3 bg-athlavix-accent text-white rounded-full text-xs font-bold uppercase tracking-widest shadow-lg hover:scale-105 active:scale-95 transition-all"
+                >
+                  Close Report
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
-      </div>
+      </AnimatePresence>
 
       {/* Input */}
       <div className="p-4 bg-white/30 border-t border-white/30 space-y-2">

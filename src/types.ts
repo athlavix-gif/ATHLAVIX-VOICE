@@ -43,6 +43,12 @@ export interface Message {
   timestamp: number;
 }
 
+export interface NotificationSettings {
+  enabled: boolean;
+  dailyAlerts: boolean;
+  updateAlerts: boolean;
+}
+
 export interface UserState {
   id: string;
   name: string;
@@ -59,6 +65,8 @@ export interface UserState {
   history: Message[];
   analysisHistory: SkinAnalysis[];
   voiceSettings: VoiceSettings;
+  notificationSettings: NotificationSettings;
+  lastNotificationAt: number | null;
   onboardingSeen: string[];
 }
 

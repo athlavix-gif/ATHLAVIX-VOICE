@@ -22,7 +22,12 @@ db.exec(`
     level INTEGER DEFAULT 1,
     badges TEXT DEFAULT '[]',
     completed_challenges TEXT DEFAULT '[]',
-    history TEXT DEFAULT '[]'
+    history TEXT DEFAULT '[]',
+    analysis_history TEXT DEFAULT '[]',
+    voice_settings TEXT DEFAULT '{"preset":"soft","speed":1}',
+    notification_settings TEXT DEFAULT '{"enabled":false,"dailyAlerts":true,"updateAlerts":true}',
+    last_notification_at INTEGER,
+    onboarding_seen TEXT DEFAULT '[]'
   );
 
   CREATE TABLE IF NOT EXISTS staff (
@@ -58,6 +63,12 @@ try {
 try {
   db.exec("ALTER TABLE users ADD COLUMN onboarding_seen TEXT DEFAULT '[]'");
 } catch (e) {}
+try {
+  db.exec("ALTER TABLE users ADD COLUMN notification_settings TEXT DEFAULT '{\"enabled\":false,\"dailyAlerts\":true,\"updateAlerts\":true}'");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE users ADD COLUMN last_notification_at INTEGER");
+} catch (e) {}
 
 async function startServer() {
   const app = express();
@@ -79,6 +90,8 @@ async function startServer() {
         history: JSON.parse(user.history || "[]"),
         analysisHistory: JSON.parse(user.analysis_history || "[]"),
         voiceSettings: JSON.parse(user.voice_settings || "{\"preset\":\"soft\",\"speed\":1}"),
+        notificationSettings: JSON.parse(user.notification_settings || "{\"enabled\":false,\"dailyAlerts\":true,\"updateAlerts\":true}"),
+        lastNotificationAt: user.last_notification_at,
         onboardingSeen: JSON.parse(user.onboarding_seen || "[]")
       });
     } else {
@@ -98,6 +111,8 @@ async function startServer() {
       history: JSON.parse(user.history || "[]"),
       analysisHistory: JSON.parse(user.analysis_history || "[]"),
       voiceSettings: JSON.parse(user.voice_settings || "{\"preset\":\"soft\",\"speed\":1}"),
+      notificationSettings: JSON.parse(user.notification_settings || "{\"enabled\":false,\"dailyAlerts\":true,\"updateAlerts\":true}"),
+      lastNotificationAt: user.last_notification_at,
       onboardingSeen: JSON.parse(user.onboarding_seen || "[]")
     })));
   });
@@ -125,17 +140,20 @@ async function startServer() {
   app.post("/api/user", (req, res) => {
     const { 
       id, name, whatsapp, avatar, skinType, concerns, points, level, 
-      badges, completedChallenges, history, analysisHistory, voiceSettings, onboardingSeen 
+      badges, completedChallenges, history, analysisHistory, voiceSettings, 
+      notificationSettings, lastNotificationAt, onboardingSeen 
     } = req.body;
     
     const stmt = db.prepare(`
       INSERT INTO users (
         id, name, whatsapp, avatar, skin_type, concerns, points, level, 
-        badges, completed_challenges, history, analysis_history, voice_settings, onboarding_seen
+        badges, completed_challenges, history, analysis_history, voice_settings, 
+        notification_settings, last_notification_at, onboarding_seen
       )
       VALUES (
         @id, @name, @whatsapp, @avatar, @skin_type, @concerns, @points, @level, 
-        @badges, @completed_challenges, @history, @analysis_history, @voice_settings, @onboarding_seen
+        @badges, @completed_challenges, @history, @analysis_history, @voice_settings, 
+        @notification_settings, @last_notification_at, @onboarding_seen
       )
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
@@ -150,6 +168,8 @@ async function startServer() {
         history = excluded.history,
         analysis_history = excluded.analysis_history,
         voice_settings = excluded.voice_settings,
+        notification_settings = excluded.notification_settings,
+        last_notification_at = excluded.last_notification_at,
         onboarding_seen = excluded.onboarding_seen
     `);
     
@@ -167,6 +187,8 @@ async function startServer() {
       history: JSON.stringify(history || []),
       analysis_history: JSON.stringify(analysisHistory || []),
       voice_settings: JSON.stringify(voiceSettings || { preset: "soft", speed: 1 }),
+      notification_settings: JSON.stringify(notificationSettings || { enabled: false, dailyAlerts: true, updateAlerts: true }),
+      last_notification_at: lastNotificationAt || null,
       onboarding_seen: JSON.stringify(onboardingSeen || [])
     });
     

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { UserState, SkinType, SKIN_CONCERNS, VoiceSettings } from "../types";
-import { X, Camera, Save, User, Phone, Bot, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
+import { UserState, SkinType, SKIN_CONCERNS, VoiceSettings, NotificationSettings } from "../types";
+import { X, Camera, Save, User, Phone, Bot, Sparkles, Loader2, CheckCircle2, Bell, BellOff } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { GoogleGenAI } from "@google/genai";
 
@@ -21,6 +21,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
   const [skinType, setSkinType] = useState(userState.skinType);
   const [concerns, setConcerns] = useState<string[]>(userState.concerns || []);
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>(userState.voiceSettings || { preset: "soft", speed: 1 });
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(userState.notificationSettings || { enabled: false, dailyAlerts: true, updateAlerts: true });
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState<"profile" | "history">("profile");
   const [botPrompt, setBotPrompt] = useState("A cute, friendly, Gen Z aesthetic girl avatar for a beauty and skincare brand, high quality, digital art, vibrant colors");
@@ -85,7 +86,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
       botAvatar,
       skinType,
       concerns,
-      voiceSettings
+      voiceSettings,
+      notificationSettings
     });
     onClose();
   };
@@ -291,6 +293,49 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
                           className="w-full accent-athlavix-accent"
                         />
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-widest opacity-50 flex items-center gap-2">
+                      <Bell size={12} /> Notifications / বিজ্ঞপ্তি
+                    </label>
+                    <div className="p-4 bg-athlavix-accent/5 rounded-2xl border border-athlavix-accent/10 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <p className="text-[10px] font-bold uppercase tracking-widest opacity-50">Enable Notifications</p>
+                          <p className="text-[8px] opacity-40">Get alerts for daily tips and updates</p>
+                        </div>
+                        <button 
+                          onClick={() => setNotificationSettings({ ...notificationSettings, enabled: !notificationSettings.enabled })}
+                          className={`p-2 rounded-full transition-all ${notificationSettings.enabled ? 'bg-athlavix-accent text-white shadow-md' : 'bg-white/50 text-athlavix-accent'}`}
+                        >
+                          {notificationSettings.enabled ? <Bell size={16} /> : <BellOff size={16} />}
+                        </button>
+                      </div>
+                      
+                      {notificationSettings.enabled && (
+                        <div className="space-y-3 pt-2 border-t border-athlavix-accent/5">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[10px] font-bold uppercase tracking-widest opacity-50">Daily Skin Tips</p>
+                            <button 
+                              onClick={() => setNotificationSettings({ ...notificationSettings, dailyAlerts: !notificationSettings.dailyAlerts })}
+                              className={`w-10 h-5 rounded-full transition-all relative ${notificationSettings.dailyAlerts ? 'bg-athlavix-accent' : 'bg-gray-200'}`}
+                            >
+                              <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${notificationSettings.dailyAlerts ? 'right-1' : 'left-1'}`} />
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <p className="text-[10px] font-bold uppercase tracking-widest opacity-50">12h Analysis Updates</p>
+                            <button 
+                              onClick={() => setNotificationSettings({ ...notificationSettings, updateAlerts: !notificationSettings.updateAlerts })}
+                              className={`w-10 h-5 rounded-full transition-all relative ${notificationSettings.updateAlerts ? 'bg-athlavix-accent' : 'bg-gray-200'}`}
+                            >
+                              <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${notificationSettings.updateAlerts ? 'right-1' : 'left-1'}`} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

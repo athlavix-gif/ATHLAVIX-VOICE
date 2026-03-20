@@ -5,6 +5,7 @@ import { Progress } from "./components/Progress";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { Celebration } from "./components/Celebration";
 import { ProfileModal } from "./components/ProfileModal";
+import { NotificationManager } from "./components/NotificationManager";
 import { getGeminiResponse, getGeminiResponseStream } from "./services/geminiService";
 import { Sparkles, User as UserIcon, Settings, LogOut, Menu, X, Database } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -97,6 +98,8 @@ export default function App() {
         }],
         analysisHistory: [],
         voiceSettings: { preset: "soft", speed: 1 },
+        notificationSettings: { enabled: false, dailyAlerts: true, updateAlerts: true },
+        lastNotificationAt: null,
         onboardingSeen: []
       };
       setUserState(newState);
@@ -238,7 +241,7 @@ export default function App() {
       text: `Hello ${userState.name}! I've cleared our history. How can I help you with your skin journey now? 😊`,
       timestamp: Date.now()
     };
-    const newState = { ...userState, history: [initialMsg] };
+    const newState = { ...userState, history: [initialMsg], analysisHistory: [] };
     setUserState(newState);
     saveUser(newState);
   };
@@ -349,6 +352,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-athlavix-bg flex flex-col md:flex-row overflow-hidden">
+      <NotificationManager 
+        userState={userState} 
+        onUpdate={handleUpdateProfile} 
+      />
       <Celebration 
         isVisible={celebration.isVisible}
         onClose={() => setCelebration(prev => ({ ...prev, isVisible: false }))}
@@ -437,6 +444,7 @@ export default function App() {
         <div className="flex-1 min-h-0">
           <Chat 
             messages={userState.history} 
+            analysisHistory={userState.analysisHistory}
             onSendMessage={handleSendMessage}
             onClearHistory={handleClearHistory}
             onOnboardingSeen={handleOnboardingSeen}
