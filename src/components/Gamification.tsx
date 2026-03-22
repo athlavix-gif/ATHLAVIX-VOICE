@@ -43,7 +43,7 @@ export const Gamification: React.FC<GamificationProps> = ({ userState, onUpdate 
     : 100;
 
   const handleShare = () => {
-    const text = `I'm glowing with ATHLAVIX! ✨ I'm Level ${userState.level} (${currentLevel.name}) with ${userState.points} points and a ${userState.streak}-day streak! Join my skincare journey! 💖`;
+    const text = `I'm glowing with ATHLAVIX! ✨ I'm Level ${userState.level} (${currentLevel.name}) and on a ${userState.streak}-day streak! Join my skincare journey! 💖`;
     navigator.clipboard.writeText(text);
     setShowCopied(true);
     setTimeout(() => setShowCopied(false), 2000);

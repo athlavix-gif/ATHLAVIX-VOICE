@@ -3,22 +3,14 @@ import { UserState, SkinType, Message, Badge } from "./types";
 import { Chat } from "./components/Chat";
 import { Progress } from "./components/Progress";
 import { Gamification } from "./components/Gamification";
-import { AdminDashboard } from "./components/AdminDashboard";
 import { Celebration } from "./components/Celebration";
 import { ProfileModal } from "./components/ProfileModal";
 import { NotificationManager } from "./components/NotificationManager";
 import { getGeminiResponse, getGeminiResponseStream } from "./services/geminiService";
-import { Sparkles, User as UserIcon, Settings, LogOut, Menu, X, Database, Trophy } from "lucide-react";
+import { Sparkles, User as UserIcon, Settings, LogOut, Menu, X, Trophy } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 const USER_ID_KEY = "athlavix_user_id";
-const ADMIN_NUMBERS = ["01906992400", "01605190849", "01912368278", "01922782203"];
-
-const isAdmin = (phone: string) => {
-  const normalized = phone.replace(/\D/g, "");
-  // Handle both local and international formats (e.g., 019... vs 88019...)
-  return ADMIN_NUMBERS.some(num => normalized.endsWith(num.replace(/\D/g, "")));
-};
 
 export default function App() {
   const [userState, setUserState] = useState<UserState | null>(null);
@@ -29,7 +21,6 @@ export default function App() {
   const [tempWhatsapp, setTempWhatsapp] = useState("");
   const [tempAvatar, setTempAvatar] = useState<string | null>(null);
   const [tempSkinType, setTempSkinType] = useState<SkinType | null>(null);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [activeView, setActiveView] = useState<"chat" | "gamification">("chat");
   const [celebration, setCelebration] = useState<{ isVisible: boolean; title: string; message: string; type: "badge" | "challenge" | "level" }>({
@@ -160,7 +151,7 @@ export default function App() {
       if (!nextState.completedChallenges.includes("daily_mask")) {
         nextState.completedChallenges.push("daily_mask");
         nextState.points += 20; // Bonus for challenge
-        setCelebration({ isVisible: true, title: "Challenge Completed! ✨", message: "You've completed your daily mask challenge! +20 points! 💖", type: "challenge" });
+        setCelebration({ isVisible: true, title: "Challenge Completed! ✨", message: "You've completed your daily mask challenge! 💖", type: "challenge" });
       }
     }
 
@@ -173,7 +164,7 @@ export default function App() {
       if (newProgress >= 3) {
         nextState.completedChallenges.push("chat_3");
         nextState.points += 30;
-        setCelebration({ isVisible: true, title: "Challenge Completed! 💬", message: "You've chatted 3 times today! +30 points! 💖", type: "challenge" });
+        setCelebration({ isVisible: true, title: "Challenge Completed! 💬", message: "You've chatted 3 times today! 💖", type: "challenge" });
       }
     }
 
@@ -475,15 +466,6 @@ export default function App() {
             </div>
 
             <div className="space-y-2 pt-6 border-t border-white/20">
-              {userState && isAdmin(userState.whatsapp) && (
-                <button 
-                  onClick={() => setIsAdminOpen(true)}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/20 text-athlavix-accent transition-colors"
-                >
-                  <Database size={20} />
-                  <span className="font-medium">Customer Database</span>
-                </button>
-              )}
               <button 
                 onClick={() => setIsProfileOpen(true)}
                 className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/20 text-athlavix-accent transition-colors"
@@ -538,22 +520,6 @@ export default function App() {
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
-
-      {/* Admin Dashboard Overlay */}
-      <AnimatePresence>
-        {isAdminOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <AdminDashboard 
-              onClose={() => setIsAdminOpen(false)} 
-              currentUser={userState}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

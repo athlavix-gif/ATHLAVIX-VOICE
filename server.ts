@@ -51,34 +51,6 @@ async function startServer() {
     }
   });
 
-  // Admin Route: Get all users
-  app.get("/api/admin/users", async (req, res) => {
-    const { data: users, error } = await supabase
-      .from("users")
-      .select("*");
-
-    if (users) {
-      res.json(users.map(user => ({
-        ...user,
-        skinType: user.skin_type,
-        concerns: user.concerns || [],
-        badges: user.badges || [],
-        completedChallenges: user.completed_challenges || [],
-        history: user.history || [],
-        analysisHistory: user.analysis_history || [],
-        voiceSettings: user.voice_settings || { preset: "soft", speed: 1 },
-        notificationSettings: user.notification_settings || { enabled: false, dailyAlerts: true, updateAlerts: true },
-        lastNotificationAt: user.last_notification_at,
-        onboardingSeen: user.onboarding_seen || [],
-        challengeProgress: user.challenge_progress || {},
-        streak: user.streak || 0,
-        lastCheckIn: user.last_check_in || null
-      })));
-    } else {
-      res.json([]);
-    }
-  });
-
   // Public Leaderboard API
   app.get("/api/leaderboard", async (req, res) => {
     const { data: users, error } = await supabase
@@ -88,44 +60,6 @@ async function startServer() {
       .limit(10);
     
     res.json(users || []);
-  });
-
-  // Staff Routes
-  app.get("/api/admin/staff", async (req, res) => {
-    const { data: staff, error } = await supabase
-      .from("staff")
-      .select("*")
-      .order("created_at", { ascending: false });
-    
-    res.json(staff || []);
-  });
-
-  app.post("/api/admin/staff", async (req, res) => {
-    const { name, role, whatsapp } = req.body;
-    const id = `staff_${Date.now()}`;
-    const { error } = await supabase
-      .from("staff")
-      .insert({ id, name, role, whatsapp, created_at: Date.now() });
-    
-    if (error) {
-      res.status(500).json({ error: error.message });
-    } else {
-      res.json({ success: true, id });
-    }
-  });
-
-  app.delete("/api/admin/staff/:id", async (req, res) => {
-    const { id } = req.params;
-    const { error } = await supabase
-      .from("staff")
-      .delete()
-      .eq("id", id);
-    
-    if (error) {
-      res.status(500).json({ error: error.message });
-    } else {
-      res.json({ success: true });
-    }
   });
 
   app.post("/api/user", async (req, res) => {
