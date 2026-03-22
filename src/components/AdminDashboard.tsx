@@ -9,12 +9,9 @@ import {
   Trash2, 
   Search, 
   ArrowLeft,
-  Download,
-  Filter
+  Download
 } from "lucide-react";
 import { UserState } from "../types";
-import { db, auth } from "../firebase";
-import { collection, getDocs, query, orderBy, addDoc, deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
 
 interface Staff {
   id: string;
@@ -26,11 +23,12 @@ interface Staff {
 
 interface AdminDashboardProps {
   onClose: () => void;
+  currentUser: UserState;
 }
 
 const ADMIN_NUMBERS = ["01906992400", "01605190849", "01912368278", "01922782203"];
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose, currentUser }) => {
   const [users, setUsers] = useState<UserState[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [activeTab, setActiveTab] = useState<"users" | "staff">("users");
@@ -41,22 +39,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
   const [isAuthorized, setIsAuthorized] = useState(false);
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    setIsLoading(true);
-    try {
-      if (!auth.currentUser) return;
-      
-      const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
-      if (!userDoc.exists()) {
-        alert("Unauthorized access.");
-        onClose();
-        return;
-      }
-      
-      const currentUser = userDoc.data() as UserState;
+    const checkAuth = () => {
       const normalized = currentUser.whatsapp.replace(/\D/g, "");
       const authorized = ADMIN_NUMBERS.some(num => normalized.endsWith(num.replace(/\D/g, "")));
       
@@ -65,19 +48,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         onClose();
         return;
       }
-      
       setIsAuthorized(true);
+      fetchData();
+    };
+    
+    checkAuth();
+  }, [currentUser]);
 
-      const [usersSnap, staffSnap] = await Promise.all([
-        getDocs(collection(db, "users")),
-        getDocs(query(collection(db, "staff"), orderBy("created_at", "desc")))
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [usersRes, staffRes] = await Promise.all([
+        fetch("/api/admin/users"),
+        fetch("/api/admin/staff")
       ]);
       
-      const usersData = usersSnap.docs.map(doc => doc.data() as UserState);
-      const staffData = staffSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Staff));
-      
-      setUsers(usersData);
-      setStaff(staffData);
+      if (usersRes.ok && staffRes.ok) {
+        const usersData = await usersRes.json();
+        const staffData = await staffRes.json();
+        setUsers(usersData);
+        setStaff(staffData);
+      }
     } catch (error) {
       console.error("Failed to fetch admin data:", error);
     } finally {
@@ -88,18 +79,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const staffId = `staff_${Date.now()}`;
-      const staffData = {
-        ...newStaff,
-        id: staffId,
-        created_at: Date.now()
-      };
+      const res = await fetch("/api/admin/staff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newStaff)
+      });
       
-      await setDoc(doc(db, "staff", staffId), staffData);
-      
-      setNewStaff({ name: "", role: "", whatsapp: "" });
-      setIsAddingStaff(false);
-      fetchData();
+      if (res.ok) {
+        setNewStaff({ name: "", role: "", whatsapp: "" });
+        setIsAddingStaff(false);
+        fetchData();
+      }
     } catch (error) {
       console.error("Failed to add staff:", error);
     }
@@ -108,8 +98,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
   const handleDeleteStaff = async (id: string) => {
     if (!confirm("Are you sure you want to remove this staff member?")) return;
     try {
-      await deleteDoc(doc(db, "staff", id));
-      fetchData();
+      const res = await fetch(`/api/admin/staff/${id}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        fetchData();
+      }
     } catch (error) {
       console.error("Failed to delete staff:", error);
     }

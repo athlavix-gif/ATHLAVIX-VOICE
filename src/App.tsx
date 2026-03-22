@@ -547,7 +547,10 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <AdminDashboard onClose={() => setIsAdminOpen(false)} />
+            <AdminDashboard 
+              onClose={() => setIsAdminOpen(false)} 
+              currentUser={userState}
+            />
           </motion.div>
         )}
       </AnimatePresence>
