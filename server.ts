@@ -27,7 +27,10 @@ db.exec(`
     voice_settings TEXT DEFAULT '{"preset":"soft","speed":1}',
     notification_settings TEXT DEFAULT '{"enabled":false,"dailyAlerts":true,"updateAlerts":true}',
     last_notification_at INTEGER,
-    onboarding_seen TEXT DEFAULT '[]'
+    onboarding_seen TEXT DEFAULT '[]',
+    challenge_progress TEXT DEFAULT '{}',
+    streak INTEGER DEFAULT 0,
+    last_check_in INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS staff (
@@ -64,6 +67,15 @@ try {
   db.exec("ALTER TABLE users ADD COLUMN onboarding_seen TEXT DEFAULT '[]'");
 } catch (e) {}
 try {
+  db.exec("ALTER TABLE users ADD COLUMN challenge_progress TEXT DEFAULT '{}'");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE users ADD COLUMN streak INTEGER DEFAULT 0");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE users ADD COLUMN last_check_in INTEGER");
+} catch (e) {}
+try {
   db.exec("ALTER TABLE users ADD COLUMN notification_settings TEXT DEFAULT '{\"enabled\":false,\"dailyAlerts\":true,\"updateAlerts\":true}'");
 } catch (e) {}
 try {
@@ -92,7 +104,10 @@ async function startServer() {
         voiceSettings: JSON.parse(user.voice_settings || "{\"preset\":\"soft\",\"speed\":1}"),
         notificationSettings: JSON.parse(user.notification_settings || "{\"enabled\":false,\"dailyAlerts\":true,\"updateAlerts\":true}"),
         lastNotificationAt: user.last_notification_at,
-        onboardingSeen: JSON.parse(user.onboarding_seen || "[]")
+        onboardingSeen: JSON.parse(user.onboarding_seen || "[]"),
+        challengeProgress: JSON.parse(user.challenge_progress || "{}"),
+        streak: user.streak || 0,
+        lastCheckIn: user.last_check_in || null
       });
     } else {
       res.status(404).json({ error: "User not found" });
@@ -113,8 +128,17 @@ async function startServer() {
       voiceSettings: JSON.parse(user.voice_settings || "{\"preset\":\"soft\",\"speed\":1}"),
       notificationSettings: JSON.parse(user.notification_settings || "{\"enabled\":false,\"dailyAlerts\":true,\"updateAlerts\":true}"),
       lastNotificationAt: user.last_notification_at,
-      onboardingSeen: JSON.parse(user.onboarding_seen || "[]")
+      onboardingSeen: JSON.parse(user.onboarding_seen || "[]"),
+      challengeProgress: JSON.parse(user.challenge_progress || "{}"),
+      streak: user.streak || 0,
+      lastCheckIn: user.last_check_in || null
     })));
+  });
+
+  // Public Leaderboard API
+  app.get("/api/leaderboard", (req, res) => {
+    const users = db.prepare("SELECT id, name, avatar, points, level FROM users ORDER BY points DESC LIMIT 10").all() as any[];
+    res.json(users);
   });
 
   // Staff Routes
@@ -140,20 +164,20 @@ async function startServer() {
   app.post("/api/user", (req, res) => {
     const { 
       id, name, whatsapp, avatar, skinType, concerns, points, level, 
-      badges, completedChallenges, history, analysisHistory, voiceSettings, 
-      notificationSettings, lastNotificationAt, onboardingSeen 
+      badges, completedChallenges, challengeProgress, history, analysisHistory, voiceSettings, 
+      notificationSettings, lastNotificationAt, onboardingSeen, streak, lastCheckIn 
     } = req.body;
     
     const stmt = db.prepare(`
       INSERT INTO users (
         id, name, whatsapp, avatar, skin_type, concerns, points, level, 
-        badges, completed_challenges, history, analysis_history, voice_settings, 
-        notification_settings, last_notification_at, onboarding_seen
+        badges, completed_challenges, challenge_progress, history, analysis_history, voice_settings, 
+        notification_settings, last_notification_at, onboarding_seen, streak, last_check_in
       )
       VALUES (
         @id, @name, @whatsapp, @avatar, @skin_type, @concerns, @points, @level, 
-        @badges, @completed_challenges, @history, @analysis_history, @voice_settings, 
-        @notification_settings, @last_notification_at, @onboarding_seen
+        @badges, @completed_challenges, @challenge_progress, @history, @analysis_history, @voice_settings, 
+        @notification_settings, @last_notification_at, @onboarding_seen, @streak, @last_check_in
       )
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
@@ -165,12 +189,15 @@ async function startServer() {
         level = excluded.level,
         badges = excluded.badges,
         completed_challenges = excluded.completed_challenges,
+        challenge_progress = excluded.challenge_progress,
         history = excluded.history,
         analysis_history = excluded.analysis_history,
         voice_settings = excluded.voice_settings,
         notification_settings = excluded.notification_settings,
         last_notification_at = excluded.last_notification_at,
-        onboarding_seen = excluded.onboarding_seen
+        onboarding_seen = excluded.onboarding_seen,
+        streak = excluded.streak,
+        last_check_in = excluded.last_check_in
     `);
     
     stmt.run({
@@ -184,12 +211,15 @@ async function startServer() {
       level: level || 1,
       badges: JSON.stringify(badges || []),
       completed_challenges: JSON.stringify(completedChallenges || []),
+      challenge_progress: JSON.stringify(challengeProgress || {}),
       history: JSON.stringify(history || []),
       analysis_history: JSON.stringify(analysisHistory || []),
       voice_settings: JSON.stringify(voiceSettings || { preset: "soft", speed: 1 }),
       notification_settings: JSON.stringify(notificationSettings || { enabled: false, dailyAlerts: true, updateAlerts: true }),
       last_notification_at: lastNotificationAt || null,
-      onboarding_seen: JSON.stringify(onboardingSeen || [])
+      onboarding_seen: JSON.stringify(onboardingSeen || []),
+      streak: streak || 0,
+      last_check_in: lastCheckIn || null
     });
     
     res.json({ success: true });

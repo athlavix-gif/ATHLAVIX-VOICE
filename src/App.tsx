@@ -2,12 +2,13 @@ import React, { useState, useEffect } from "react";
 import { UserState, SkinType, Message, Badge } from "./types";
 import { Chat } from "./components/Chat";
 import { Progress } from "./components/Progress";
+import { Gamification } from "./components/Gamification";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { Celebration } from "./components/Celebration";
 import { ProfileModal } from "./components/ProfileModal";
 import { NotificationManager } from "./components/NotificationManager";
 import { getGeminiResponse, getGeminiResponseStream } from "./services/geminiService";
-import { Sparkles, User as UserIcon, Settings, LogOut, Menu, X, Database } from "lucide-react";
+import { Sparkles, User as UserIcon, Settings, LogOut, Menu, X, Database, Trophy } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 const USER_ID_KEY = "athlavix_user_id";
@@ -30,6 +31,7 @@ export default function App() {
   const [tempSkinType, setTempSkinType] = useState<SkinType | null>(null);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [activeView, setActiveView] = useState<"chat" | "gamification">("chat");
   const [celebration, setCelebration] = useState<{ isVisible: boolean; title: string; message: string; type: "badge" | "challenge" | "level" }>({
     isVisible: false,
     title: "",
@@ -49,7 +51,11 @@ export default function App() {
         const res = await fetch(`/api/user/${storedId}`);
         if (res.ok) {
           const data = await res.json();
-          setUserState(data);
+          const updatedUser = checkStreak(data);
+          setUserState(updatedUser);
+          if (updatedUser !== data) {
+            saveUser(updatedUser);
+          }
         } else {
           // If ID exists in local but not in DB, reset
           localStorage.removeItem(USER_ID_KEY);
@@ -100,7 +106,9 @@ export default function App() {
         voiceSettings: { preset: "soft", speed: 1 },
         notificationSettings: { enabled: false, dailyAlerts: true, updateAlerts: true },
         lastNotificationAt: null,
-        onboardingSeen: []
+        onboardingSeen: [],
+        streak: 1,
+        lastCheckIn: Date.now()
       };
       setUserState(newState);
       setIsFirstTime(false);
@@ -256,6 +264,41 @@ export default function App() {
     saveUser(newState);
   };
 
+  const checkStreak = (user: UserState): UserState => {
+    const now = new Date();
+    const lastCheckIn = user.lastCheckIn ? new Date(user.lastCheckIn) : null;
+    
+    if (!lastCheckIn) {
+      return { ...user, streak: 1, lastCheckIn: Date.now() };
+    }
+
+    const isSameDay = (d1: Date, d2: Date) => 
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate();
+
+    if (isSameDay(now, lastCheckIn)) {
+      return user;
+    }
+
+    const yesterday = new Date();
+    yesterday.setDate(now.getDate() - 1);
+    
+    if (isSameDay(yesterday, lastCheckIn)) {
+      const newStreak = user.streak + 1;
+      let newPoints = user.points + 10; // Bonus for streak
+      
+      // Bonus for streak milestones
+      if (newStreak % 7 === 0) newPoints += 50;
+      if (newStreak % 30 === 0) newPoints += 200;
+
+      return { ...user, streak: newStreak, lastCheckIn: Date.now(), points: newPoints };
+    }
+
+    // Missed a day
+    return { ...user, streak: 1, lastCheckIn: Date.now() };
+  };
+
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -404,6 +447,30 @@ export default function App() {
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
+              <div className="space-y-2 mb-6">
+                <button 
+                  onClick={() => { setActiveView("chat"); setIsSidebarOpen(false); }}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
+                    activeView === "chat" 
+                      ? "bg-athlavix-accent text-white shadow-lg" 
+                      : "hover:bg-white/20 text-athlavix-accent"
+                  }`}
+                >
+                  <Sparkles size={20} />
+                  <span className="font-bold">AI Beauty Coach</span>
+                </button>
+                <button 
+                  onClick={() => { setActiveView("gamification"); setIsSidebarOpen(false); }}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
+                    activeView === "gamification" 
+                      ? "bg-athlavix-accent text-white shadow-lg" 
+                      : "hover:bg-white/20 text-athlavix-accent"
+                  }`}
+                >
+                  <Trophy size={20} />
+                  <span className="font-bold">Glow Challenges</span>
+                </button>
+              </div>
               <Progress userState={userState} />
             </div>
 
@@ -442,18 +509,25 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 p-4 md:p-8 flex flex-col h-[calc(100vh-64px)] md:h-screen max-w-5xl mx-auto w-full">
         <div className="flex-1 min-h-0">
-          <Chat 
-            messages={userState.history} 
-            analysisHistory={userState.analysisHistory}
-            onSendMessage={handleSendMessage}
-            onClearHistory={handleClearHistory}
-            onOnboardingSeen={handleOnboardingSeen}
-            onboardingSeen={userState.onboardingSeen}
-            isTyping={isTyping}
-            userAvatar={userState.avatar}
-            botAvatar={userState.botAvatar}
-            voiceSettings={userState.voiceSettings}
-          />
+          {activeView === "chat" ? (
+            <Chat 
+              messages={userState.history} 
+              analysisHistory={userState.analysisHistory}
+              onSendMessage={handleSendMessage}
+              onClearHistory={handleClearHistory}
+              onOnboardingSeen={handleOnboardingSeen}
+              onboardingSeen={userState.onboardingSeen}
+              isTyping={isTyping}
+              userAvatar={userState.avatar}
+              botAvatar={userState.botAvatar}
+              voiceSettings={userState.voiceSettings}
+            />
+          ) : (
+            <Gamification 
+              userState={userState}
+              onUpdate={handleUpdateProfile}
+            />
+          )}
         </div>
       </main>
 
