@@ -7,6 +7,7 @@ import { Celebration } from "./components/Celebration";
 import { ProfileModal } from "./components/ProfileModal";
 import { NotificationManager } from "./components/NotificationManager";
 import { getGeminiResponse, getGeminiResponseStream } from "./services/geminiService";
+import { supabase } from "./lib/supabase";
 import { Sparkles, User as UserIcon, Settings, LogOut, Menu, X, Trophy } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -47,14 +48,65 @@ export default function App() {
           if (updatedUser !== data) {
             saveUser(updatedUser);
           }
-        } else {
+        } else if (res.status === 404) {
           // If ID exists in local but not in DB, reset
           localStorage.removeItem(USER_ID_KEY);
           setIsFirstTime(true);
+        } else {
+          throw new Error("API failed");
         }
       } catch (err) {
-        console.error("Failed to load user:", err);
-        setIsFirstTime(true);
+        console.warn("Backend API failed, falling back to client-side Supabase:", err);
+        // Fallback to client-side Supabase
+        try {
+          const { data: user, error } = await supabase
+            .from("users")
+            .select("*")
+            .eq("id", storedId)
+            .single();
+
+          if (error) {
+            if (error.code === "PGRST116") {
+              localStorage.removeItem(USER_ID_KEY);
+              setIsFirstTime(true);
+            } else {
+              console.error("Client-side Supabase fetch error:", error);
+              setIsFirstTime(true);
+            }
+          } else if (user) {
+            // Map snake_case to camelCase
+            const mappedUser: UserState = {
+              id: user.id,
+              name: user.name,
+              whatsapp: user.whatsapp,
+              avatar: user.avatar,
+              botAvatar: user.bot_avatar || null,
+              skinType: user.skin_type,
+              concerns: user.concerns,
+              points: user.points,
+              level: user.level,
+              badges: user.badges,
+              completedChallenges: user.completed_challenges,
+              challengeProgress: user.challenge_progress,
+              history: user.history,
+              analysisHistory: user.analysis_history,
+              voiceSettings: user.voice_settings,
+              notificationSettings: user.notification_settings,
+              lastNotificationAt: user.last_notification_at,
+              onboardingSeen: user.onboarding_seen,
+              streak: user.streak,
+              lastCheckIn: user.last_check_in
+            };
+            const updatedUser = checkStreak(mappedUser);
+            setUserState(updatedUser);
+            if (updatedUser !== mappedUser) {
+              saveUser(updatedUser);
+            }
+          }
+        } catch (clientErr) {
+          console.error("Client-side Supabase fallback failed:", clientErr);
+          setIsFirstTime(true);
+        }
       }
     };
     loadUser();
@@ -68,12 +120,45 @@ export default function App() {
         body: JSON.stringify(state),
       });
       if (!res.ok) {
-        const errorData = await res.json();
-        console.error("Failed to save user to database:", errorData.error);
-        // We could show a toast here if we had a toast system
+        throw new Error("API save failed");
       }
     } catch (err) {
-      console.error("Network error while saving user:", err);
+      console.warn("Backend API save failed, falling back to client-side Supabase:", err);
+      // Fallback to client-side Supabase
+      try {
+        const userData = {
+          id: state.id,
+          name: state.name,
+          whatsapp: state.whatsapp || "",
+          avatar: state.avatar || null,
+          bot_avatar: state.botAvatar || null,
+          skin_type: state.skinType || null,
+          concerns: state.concerns || [],
+          points: state.points || 0,
+          level: state.level || 1,
+          badges: state.badges || [],
+          completed_challenges: state.completedChallenges || [],
+          challenge_progress: state.challengeProgress || {},
+          history: state.history || [],
+          analysis_history: state.analysisHistory || [],
+          voice_settings: state.voiceSettings || { preset: "soft", speed: 1 },
+          notification_settings: state.notificationSettings || { enabled: false, dailyAlerts: true, updateAlerts: true },
+          last_notification_at: state.lastNotificationAt || null,
+          onboarding_seen: state.onboardingSeen || [],
+          streak: state.streak || 0,
+          last_check_in: state.lastCheckIn || null
+        };
+
+        const { error } = await supabase
+          .from("users")
+          .upsert(userData, { onConflict: "id" });
+
+        if (error) {
+          console.error("Client-side Supabase upsert error:", error);
+        }
+      } catch (clientErr) {
+        console.error("Client-side Supabase fallback save failed:", clientErr);
+      }
     }
   };
 

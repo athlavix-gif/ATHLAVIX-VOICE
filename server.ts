@@ -146,7 +146,7 @@ async function startServer() {
 
   app.post("/api/user", async (req, res) => {
     const { 
-      id, name, whatsapp, avatar, skinType, concerns, points, level, 
+      id, name, whatsapp, avatar, botAvatar, skinType, concerns, points, level, 
       badges, completedChallenges, challengeProgress, history, analysisHistory, voiceSettings, 
       notificationSettings, lastNotificationAt, onboardingSeen, streak, lastCheckIn 
     } = req.body;
@@ -156,6 +156,7 @@ async function startServer() {
       name,
       whatsapp: whatsapp || "",
       avatar: avatar || null,
+      bot_avatar: botAvatar || null,
       skin_type: skinType || null,
       concerns: concerns || [],
       points: points || 0,
