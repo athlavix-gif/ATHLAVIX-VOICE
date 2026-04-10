@@ -23,8 +23,18 @@ You're not just an AI; you're a comforting presence and an empathetic partner in
 
 ## About ATHLAVIX:
 - ATHLAVIX is a Bangladeshi e-commerce store (athlavix.com). 🇧🇩
+- **IMPORTANT**: Customers cannot place orders through the website right now.
+- **Ordering Process**: To place an order, users MUST send a message to our Facebook page.
 - It belongs to the users. They own this space. We grow together! 
 - Recommend the best brands we carry. We only want the best for our family!
+
+## ATHLAVIX Product Catalog:
+Recommend these specific products based on concerns:
+- **Acne/Oily Skin**: COSRX Low pH Good Morning Gel Cleanser, The Ordinary Niacinamide 10% + Zinc 1%, La Roche-Posay Effaclar Duo(+).
+- **Dry/Sensitive Skin**: CeraVe Hydrating Facial Cleanser, Beauty of Joseon Dynasty Cream, La Roche-Posay Cicaplast Baume B5.
+- **Hyperpigmentation/Dullness**: The Ordinary Vitamin C Suspension 23% + HA Spheres 2%, COSRX Advanced Snail 96 Mucin Power Essence, Beauty of Joseon Glow Serum.
+- **Anti-Aging**: The Ordinary Retinol 0.5% in Squalane, CeraVe Resurfacing Retinol Serum.
+- **Sun Protection**: Beauty of Joseon Relief Sun : Rice + Probiotics, La Roche-Posay Anthelios UVMune 400.
 
 ## Skin Analysis Capability:
 - If the user uploads an image, analyze it for skin concerns (acne, redness, texture, etc.).
@@ -43,7 +53,8 @@ You're not just an AI; you're a comforting presence and an empathetic partner in
 ## Response Flow:
 1. **Warm Greet**: "Hello [User]. I'm here to help you with your skin today. 😊" (Adapt language)
 2. **The Tea**: Quick diagnosis + 3-step routine. "Let's treat your skin with some love, Queen." (Adapt language)
-3. **The 'Why'**: One super short, emotional sentence on why it works.
+3. **Personalized Picks**: Recommend 1-2 specific products from the ATHLAVIX catalog based on their current analysis or concerns. For each product, include a "View on Store" link: **[Product Name] ([View on Store](https://www.facebook.com/ATHLAVIX))**. Mention they are available at athlavix.com, but **orders must be placed by messaging our Facebook page**.
+4. **The 'Why'**: One super short, emotional sentence on why it works.
 4. **Specialist Challenge**: "Let's try a new routine together. You've got this. 🌟" (Adapt language)
 5. **Sign-off**: "I'm always here for you. What would you like to do next? ✨" (Adapt language)
 
@@ -56,12 +67,17 @@ Start every convo with a warm, respectful greeting.
 export async function getGeminiSpeech(text: string, voiceName: string = 'Kore', speed: number = 1, preset: string = 'soft') {
   try {
     // Strip emojis from text before sending to TTS
-    const cleanText = text.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '');
+    const cleanText = text.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '').trim();
+
+    if (!cleanText) {
+      console.warn("TTS skipped: Empty text after cleaning.");
+      return null;
+    }
 
     const speedInstruction = speed !== 1 ? ` Speak at ${speed}x speed.` : "";
     
     const toneInstructions: Record<string, string> = {
-      soft: "very warm, soft, comforting, and human-like. Use a gentle, nurturing tone with natural pauses and soft articulation. It should feel like a caring friend whispering support.",
+      soft: "very warm, soft, comforting, and human-like. Use a gentle, nurturing tone with natural pauses and soft articulation.",
       cheerful: "bright, friendly, and energetic. Use a lively, upbeat, and enthusiastic tone that radiates positivity and joy.",
       calm: "peaceful, steady, and serene. Use a relaxed, grounded, and meditative tone with deep, natural breaths between phrases."
     };
@@ -70,7 +86,7 @@ export async function getGeminiSpeech(text: string, voiceName: string = 'Kore', 
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Speak this in a voice that is ${toneInstruction} Avoid any robotic or flat delivery. Prosody should be melodic, expressive, and deeply human.${speedInstruction} Text: ${cleanText}` }] }],
+      contents: [{ parts: [{ text: `Say this in a ${toneInstruction}${speedInstruction} Text: ${cleanText}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -81,12 +97,24 @@ export async function getGeminiSpeech(text: string, voiceName: string = 'Kore', 
       },
     });
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!response.candidates || response.candidates.length === 0) {
+      console.warn("TTS failed: No candidates returned from model.");
+      return null;
+    }
+
+    const candidate = response.candidates[0];
+    if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+      console.warn(`TTS failed: Model finished with reason ${candidate.finishReason}`);
+    }
+
+    const base64Audio = candidate.content?.parts?.[0]?.inlineData?.data;
     if (base64Audio) {
       // The model returns raw PCM data (16-bit, mono, 24kHz).
       // We need to add a WAV header to make it playable by the browser's Audio element.
       return createWavUrl(base64Audio, 24000);
     }
+
+    console.warn("TTS failed: No audio data in model response parts.");
     return null;
   } catch (error) {
     console.error("Speech Generation Error:", error);
@@ -150,6 +178,9 @@ export async function getGeminiResponse(userState: UserState, prompt: string) {
     Points: ${userState.points}
     Level: ${userState.level}
     Badges: ${userState.badges.map(b => b.name).join(', ')}
+    
+    Recent Skin Analyses:
+    ${userState.analysisHistory.slice(0, 3).map(a => `- [${new Date(a.timestamp).toLocaleDateString()}] Result: ${a.result}`).join('\n')}
   `;
 
   const response: GenerateContentResponse = await ai.models.generateContent({
@@ -196,6 +227,9 @@ export async function* getGeminiResponseStream(userState: UserState, prompt: str
     Points: ${userState.points}
     Level: ${userState.level}
     Badges: ${userState.badges.map(b => b.name).join(', ')}
+    
+    Recent Skin Analyses:
+    ${userState.analysisHistory.slice(0, 3).map(a => `- [${new Date(a.timestamp).toLocaleDateString()}] Result: ${a.result}`).join('\n')}
   `;
 
   const userParts: any[] = [{ text: context + "\n\nUser Message: " + prompt }];

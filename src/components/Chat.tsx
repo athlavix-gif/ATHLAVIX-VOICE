@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Message, UserState } from "../types";
-import { Send, Mic, Volume2, VolumeX, Sparkles, User, Bot, X, Image as ImageIcon, Camera, Loader2, Trash2 } from "lucide-react";
+import { Send, Mic, Volume2, VolumeX, Sparkles, User, Bot, X, Image as ImageIcon, Camera, Loader2, Trash2, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import Markdown from "react-markdown";
 import { getGeminiSpeech } from "../services/geminiService";
@@ -10,6 +10,7 @@ interface ChatProps {
   analysisHistory: UserState['analysisHistory'];
   onSendMessage: (text: string, image?: string) => void;
   onClearHistory: () => void;
+  onDeleteAnalysis: (id: string) => void;
   onOnboardingSeen: (tipId: string) => void;
   onboardingSeen: string[];
   isTyping: boolean;
@@ -23,6 +24,7 @@ export const Chat: React.FC<ChatProps> = ({
   analysisHistory,
   onSendMessage, 
   onClearHistory, 
+  onDeleteAnalysis,
   onOnboardingSeen,
   onboardingSeen,
   isTyping, 
@@ -44,6 +46,7 @@ export const Chat: React.FC<ChatProps> = ({
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const spokenMessageTimestamps = useRef<Set<number>>(new Set());
 
   const [activeTip, setActiveTip] = useState<string | null>(null);
 
@@ -131,8 +134,8 @@ export const Chat: React.FC<ChatProps> = ({
   const handleSend = () => {
     if ((!input.trim() && !selectedImage) || isTyping || isAnalyzing) return;
     
-    const text = input.trim();
     const image = selectedImage || undefined;
+    const text = input.trim() || (image ? "Analyze my skin, please! ✨" : "");
     
     if (image) setIsAnalyzing(true);
     
@@ -165,9 +168,14 @@ export const Chat: React.FC<ChatProps> = ({
   const speak = async (text: string) => {
     if (!isVoiceEnabled) return;
 
-    // Stop existing audio if any
+    // Stop ALL existing speech immediately
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    
     if (audioRef.current) {
       audioRef.current.pause();
+      audioRef.current.currentTime = 0;
       audioRef.current = null;
     }
 
@@ -200,11 +208,13 @@ export const Chat: React.FC<ChatProps> = ({
         };
         const voiceName = voiceMap[voiceSettings.preset] || 'Kore';
         const audioData = await getGeminiSpeech(text, voiceName, voiceSettings.speed, voiceSettings.preset);
-        if (audioData) {
+        
+        // Check again if voice is still enabled and we haven't started another speech
+        if (audioData && isVoiceEnabled) {
           const audio = new Audio(audioData);
           audioRef.current = audio;
           audio.play().catch(err => console.error("Audio playback error:", err));
-        } else {
+        } else if (!audioData) {
           throw new Error("No audio data");
         }
       } catch (error) {
@@ -225,7 +235,8 @@ export const Chat: React.FC<ChatProps> = ({
 
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
-    if (lastMessage?.role === "model" && isVoiceEnabled) {
+    if (lastMessage?.role === "model" && isVoiceEnabled && !spokenMessageTimestamps.current.has(lastMessage.timestamp)) {
+      spokenMessageTimestamps.current.add(lastMessage.timestamp);
       speak(lastMessage.text);
     }
   }, [messages, isVoiceEnabled]);
@@ -332,6 +343,11 @@ export const Chat: React.FC<ChatProps> = ({
         </AnimatePresence>
       </div>
 
+      {/* Order Notice Banner */}
+      <div className="bg-athlavix-accent text-white px-4 py-2 text-[10px] font-bold text-center uppercase tracking-[0.2em] animate-pulse">
+        Orders via Facebook Page only • ওয়েবসাইট থেকে অর্ডার আপাতত বন্ধ
+      </div>
+
       {/* Messages or History */}
       <div 
         ref={scrollRef}
@@ -382,7 +398,29 @@ export const Chat: React.FC<ChatProps> = ({
                             </div>
                           )}
                           <div className="markdown-body text-sm leading-relaxed">
-                            <Markdown>{msg.text}</Markdown>
+                            <Markdown
+                              components={{
+                                a: ({ node, ...props }) => {
+                                  const isStoreLink = props.children?.toString().includes("View on Store");
+                                  if (isStoreLink) {
+                                    return (
+                                      <a
+                                        {...props}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 px-3 py-1 bg-athlavix-accent/10 text-athlavix-accent rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-athlavix-accent hover:text-white transition-all mt-1 no-underline"
+                                      >
+                                        {props.children}
+                                        <ExternalLink size={10} />
+                                      </a>
+                                    );
+                                  }
+                                  return <a {...props} target="_blank" rel="noopener noreferrer" className="text-athlavix-accent hover:underline" />;
+                                }
+                              }}
+                            >
+                              {msg.text}
+                            </Markdown>
                           </div>
                         </div>
                         <p className={`text-[9px] font-bold uppercase tracking-widest opacity-40 px-1 ${msg.role === "user" ? "text-right" : "text-left"}`}>
@@ -422,6 +460,15 @@ export const Chat: React.FC<ChatProps> = ({
                   <ImageIcon size={32} />
                 </div>
                 <p className="text-xs font-medium text-athlavix-accent/40">No analysis history yet. Try scanning your skin!</p>
+                <button 
+                  onClick={() => {
+                    setView("chat");
+                    fileInputRef.current?.click();
+                  }}
+                  className="px-6 py-2 bg-athlavix-accent text-white rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg hover:scale-105 active:scale-95 transition-all"
+                >
+                  Start First Scan ✨
+                </button>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4">
@@ -437,18 +484,25 @@ export const Chat: React.FC<ChatProps> = ({
                       <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-athlavix-accent/10">
                         <img src={analysis.image} alt="Analysis" className="w-full h-full object-cover" />
                       </div>
-                      <div className="flex-1 min-w-0 flex flex-col justify-center">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[9px] font-bold text-athlavix-accent/40 uppercase tracking-widest">
-                            {new Date(analysis.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-                          </span>
-                          <span className="text-[9px] font-bold text-athlavix-accent/40 uppercase tracking-widest">
-                            {new Date(analysis.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                        <p className="text-xs font-medium text-athlavix-text line-clamp-2 opacity-80">
-                          {analysis.result.substring(0, 100)}...
-                        </p>
+                        <div className="flex-1 min-w-0 flex flex-col justify-center">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[9px] font-bold text-athlavix-accent/40 uppercase tracking-widest">
+                              {new Date(analysis.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteAnalysis(analysis.id);
+                              }}
+                              className="p-1.5 text-athlavix-accent/20 hover:text-red-500 transition-colors"
+                              title="Delete Analysis"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                          <p className="text-xs font-medium text-athlavix-text line-clamp-2 opacity-80">
+                            {analysis.result.substring(0, 100)}...
+                          </p>
                         <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-athlavix-accent uppercase tracking-widest group-hover:translate-x-1 transition-transform">
                           View Details <Sparkles size={10} />
                         </div>
@@ -500,9 +554,41 @@ export const Chat: React.FC<ChatProps> = ({
                       {new Date(selectedAnalysis.timestamp).toLocaleString([], { dateStyle: 'long', timeStyle: 'short' })}
                     </p>
                   </div>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedAnalysis.result);
+                      // Maybe a toast here?
+                    }}
+                    className="p-2 bg-athlavix-accent/5 text-athlavix-accent hover:bg-athlavix-accent/10 rounded-full transition-all"
+                    title="Copy Report"
+                  >
+                    <Sparkles size={16} />
+                  </button>
                 </div>
                 <div className="markdown-body text-sm leading-relaxed text-athlavix-text">
-                  <Markdown>{selectedAnalysis.result}</Markdown>
+                  <Markdown
+                    components={{
+                      a: ({ node, ...props }) => {
+                        const isStoreLink = props.children?.toString().includes("View on Store");
+                        if (isStoreLink) {
+                          return (
+                            <a
+                              {...props}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1 bg-athlavix-accent/10 text-athlavix-accent rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-athlavix-accent hover:text-white transition-all mt-1 no-underline"
+                            >
+                              {props.children}
+                              <ExternalLink size={10} />
+                            </a>
+                          );
+                        }
+                        return <a {...props} target="_blank" rel="noopener noreferrer" className="text-athlavix-accent hover:underline" />;
+                      }
+                    }}
+                  >
+                    {selectedAnalysis.result}
+                  </Markdown>
                 </div>
               </div>
               <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end">
@@ -522,19 +608,20 @@ export const Chat: React.FC<ChatProps> = ({
       <div className="p-4 bg-white/30 border-t border-white/30 space-y-2">
         {selectedImage && (
           <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="relative w-24 h-24 rounded-2xl overflow-hidden border-2 border-athlavix-accent shadow-xl group"
+            initial={{ opacity: 0, scale: 0.9, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative w-32 h-32 rounded-2xl overflow-hidden border-2 border-athlavix-accent shadow-2xl group mx-auto mb-2"
           >
             <img src={selectedImage} alt="Preview" className="w-full h-full object-cover" />
             <button 
               onClick={() => setSelectedImage(null)}
-              className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors"
+              className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-all hover:scale-110"
             >
-              <X size={12} />
+              <X size={14} />
             </button>
-            <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <p className="text-[8px] font-bold text-white uppercase tracking-widest">Ready to scan</p>
+            <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <Sparkles size={24} className="text-white mb-1 animate-pulse" />
+              <p className="text-[8px] font-black text-white uppercase tracking-widest">Ready to scan</p>
             </div>
           </motion.div>
         )}

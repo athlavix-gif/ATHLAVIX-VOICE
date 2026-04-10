@@ -10,9 +10,14 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const supabaseUrl = process.env.SUPABASE_URL || "https://vekrfnxuizzcmycdfrip.supabase.co";
-const supabaseKey = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZla3Jmbnh1aXp6Y215Y2RmcmlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMDQzNjEsImV4cCI6MjA4OTc4MDM2MX0.z43Zm_9ua8vHfFWpSuG_0GQ9bEaJri9Gm1rByJzamBs";
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error("MISSING SUPABASE CONFIGURATION: Please set SUPABASE_URL and SUPABASE_ANON_KEY in your environment variables.");
+}
+
+const supabase = createClient(supabaseUrl || "", supabaseKey || "");
 
 async function startServer() {
   const app = express();
@@ -23,31 +28,44 @@ async function startServer() {
   // API Routes
   app.get("/api/user/:id", async (req, res) => {
     const { id } = req.params;
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", id)
-      .single();
+    try {
+      const { data: user, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", id)
+        .single();
 
-    if (user) {
-      res.json({
-        ...user,
-        skinType: user.skin_type,
-        concerns: user.concerns || [],
-        badges: user.badges || [],
-        completedChallenges: user.completed_challenges || [],
-        history: user.history || [],
-        analysisHistory: user.analysis_history || [],
-        voiceSettings: user.voice_settings || { preset: "soft", speed: 1 },
-        notificationSettings: user.notification_settings || { enabled: false, dailyAlerts: true, updateAlerts: true },
-        lastNotificationAt: user.last_notification_at,
-        onboardingSeen: user.onboarding_seen || [],
-        challengeProgress: user.challenge_progress || {},
-        streak: user.streak || 0,
-        lastCheckIn: user.last_check_in || null
-      });
-    } else {
-      res.status(404).json({ error: "User not found" });
+      if (error) {
+        if (error.code === "PGRST116") {
+          return res.status(404).json({ error: "User not found" });
+        }
+        console.error("Supabase fetch error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      if (user) {
+        res.json({
+          ...user,
+          skinType: user.skin_type,
+          concerns: user.concerns || [],
+          badges: user.badges || [],
+          completedChallenges: user.completed_challenges || [],
+          history: user.history || [],
+          analysisHistory: user.analysis_history || [],
+          voiceSettings: user.voice_settings || { preset: "soft", speed: 1 },
+          notificationSettings: user.notification_settings || { enabled: false, dailyAlerts: true, updateAlerts: true },
+          lastNotificationAt: user.last_notification_at,
+          onboardingSeen: user.onboarding_seen || [],
+          challengeProgress: user.challenge_progress || {},
+          streak: user.streak || 0,
+          lastCheckIn: user.last_check_in || null
+        });
+      } else {
+        res.status(404).json({ error: "User not found" });
+      }
+    } catch (err) {
+      console.error("Server error during fetch:", err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 

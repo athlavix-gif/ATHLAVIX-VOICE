@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { UserState, SkinType, SKIN_CONCERNS, VoiceSettings, NotificationSettings } from "../types";
-import { X, Camera, Save, User, Phone, Bot, Sparkles, Loader2, CheckCircle2, Bell, BellOff } from "lucide-react";
+import { X, Camera, Save, User, Phone, Bot, Sparkles, Loader2, CheckCircle2, Bell, BellOff, Volume2, Play } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { GoogleGenAI } from "@google/genai";
+import { getGeminiSpeech } from "../services/geminiService";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
@@ -21,10 +22,60 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
   const [skinType, setSkinType] = useState(userState.skinType);
   const [concerns, setConcerns] = useState<string[]>(userState.concerns || []);
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>(userState.voiceSettings || { preset: "soft", speed: 1 });
-  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(userState.notificationSettings || { enabled: false, dailyAlerts: true, updateAlerts: true });
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(userState.notificationSettings || { enabled: true, dailyAlerts: true, updateAlerts: true });
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState<"profile" | "history">("profile");
   const [botPrompt, setBotPrompt] = useState("A cute, friendly, Gen Z aesthetic girl avatar for a beauty and skincare brand, high quality, digital art, vibrant colors");
+  const [isTestingVoice, setIsTestingVoice] = useState(false);
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  const handleTestVoice = async () => {
+    setIsTestingVoice(true);
+    try {
+      const voiceMap = {
+        soft: 'Kore',
+        cheerful: 'Zephyr',
+        calm: 'Charon'
+      };
+      const voiceName = voiceMap[voiceSettings.preset] || 'Kore';
+      const testText = "Hello! I am your skin specialist. How do I sound?";
+      
+      const audioData = await getGeminiSpeech(testText, voiceName, voiceSettings.speed, voiceSettings.preset);
+      
+      if (audioData) {
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+        const audio = new Audio(audioData);
+        audioRef.current = audio;
+        audio.play();
+        audio.onended = () => setIsTestingVoice(false);
+      } else {
+        // Fallback to browser TTS for testing
+        const utterance = new SpeechSynthesisUtterance(testText);
+        utterance.rate = voiceSettings.speed;
+        if (voiceSettings.preset === 'cheerful') utterance.pitch = 1.2;
+        else if (voiceSettings.preset === 'calm') utterance.pitch = 0.8;
+        else utterance.pitch = 1.0;
+        
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+        utterance.onend = () => setIsTestingVoice(false);
+      }
+    } catch (err) {
+      console.error("Failed to test voice:", err);
+      setIsTestingVoice(false);
+    }
+  };
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -259,7 +310,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-widest opacity-50">Voice Settings / ভয়েস সেটিংস</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold uppercase tracking-widest opacity-50 flex items-center gap-2">
+                        <Volume2 size={12} /> Voice Settings / ভয়েস সেটিংস
+                      </label>
+                      <button 
+                        onClick={handleTestVoice}
+                        disabled={isTestingVoice}
+                        className="flex items-center gap-1.5 px-3 py-1 bg-athlavix-accent/10 text-athlavix-accent rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-athlavix-accent/20 transition-all disabled:opacity-50"
+                      >
+                        {isTestingVoice ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+                        Test Voice
+                      </button>
+                    </div>
                     <div className="p-4 bg-athlavix-accent/5 rounded-2xl border border-athlavix-accent/10 space-y-4">
                       <div className="space-y-2">
                         <p className="text-[10px] font-bold uppercase tracking-widest opacity-50">Tone Preset</p>
@@ -301,41 +364,46 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
                       <Bell size={12} /> Notifications / বিজ্ঞপ্তি
                     </label>
                     <div className="p-4 bg-athlavix-accent/5 rounded-2xl border border-athlavix-accent/10 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-0.5">
-                          <p className="text-[10px] font-bold uppercase tracking-widest opacity-50">Enable Notifications</p>
-                          <p className="text-[8px] opacity-40">Get alerts for daily tips and updates</p>
-                        </div>
-                        <button 
-                          onClick={() => setNotificationSettings({ ...notificationSettings, enabled: !notificationSettings.enabled })}
-                          className={`p-2 rounded-full transition-all ${notificationSettings.enabled ? 'bg-athlavix-accent text-white shadow-md' : 'bg-white/50 text-athlavix-accent'}`}
-                        >
-                          {notificationSettings.enabled ? <Bell size={16} /> : <BellOff size={16} />}
-                        </button>
-                      </div>
-                      
-                      {notificationSettings.enabled && (
-                        <div className="space-y-3 pt-2 border-t border-athlavix-accent/5">
-                          <div className="flex items-center justify-between">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-0.5">
                             <p className="text-[10px] font-bold uppercase tracking-widest opacity-50">Daily Skin Tips</p>
-                            <button 
-                              onClick={() => setNotificationSettings({ ...notificationSettings, dailyAlerts: !notificationSettings.dailyAlerts })}
-                              className={`w-10 h-5 rounded-full transition-all relative ${notificationSettings.dailyAlerts ? 'bg-athlavix-accent' : 'bg-gray-200'}`}
-                            >
-                              <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${notificationSettings.dailyAlerts ? 'right-1' : 'left-1'}`} />
-                            </button>
+                            <p className="text-[8px] opacity-40">Get daily skincare advice and routines</p>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <p className="text-[10px] font-bold uppercase tracking-widest opacity-50">12h Analysis Updates</p>
-                            <button 
-                              onClick={() => setNotificationSettings({ ...notificationSettings, updateAlerts: !notificationSettings.updateAlerts })}
-                              className={`w-10 h-5 rounded-full transition-all relative ${notificationSettings.updateAlerts ? 'bg-athlavix-accent' : 'bg-gray-200'}`}
-                            >
-                              <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${notificationSettings.updateAlerts ? 'right-1' : 'left-1'}`} />
-                            </button>
-                          </div>
+                          <button 
+                            onClick={() => {
+                              const nextDaily = !notificationSettings.dailyAlerts;
+                              setNotificationSettings({ 
+                                ...notificationSettings, 
+                                dailyAlerts: nextDaily,
+                                enabled: nextDaily || notificationSettings.updateAlerts
+                              });
+                            }}
+                            className={`w-10 h-5 rounded-full transition-all relative ${notificationSettings.dailyAlerts ? 'bg-athlavix-accent' : 'bg-gray-200'}`}
+                          >
+                            <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${notificationSettings.dailyAlerts ? 'right-1' : 'left-1'}`} />
+                          </button>
                         </div>
-                      )}
+                        <div className="flex items-center justify-between pt-3 border-t border-athlavix-accent/5">
+                          <div className="space-y-0.5">
+                            <p className="text-[10px] font-bold uppercase tracking-widest opacity-50">12h Analysis Updates</p>
+                            <p className="text-[8px] opacity-40">Reminders for your next skin analysis</p>
+                          </div>
+                          <button 
+                            onClick={() => {
+                              const nextUpdate = !notificationSettings.updateAlerts;
+                              setNotificationSettings({ 
+                                ...notificationSettings, 
+                                updateAlerts: nextUpdate,
+                                enabled: notificationSettings.dailyAlerts || nextUpdate
+                              });
+                            }}
+                            className={`w-10 h-5 rounded-full transition-all relative ${notificationSettings.updateAlerts ? 'bg-athlavix-accent' : 'bg-gray-200'}`}
+                          >
+                            <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${notificationSettings.updateAlerts ? 'right-1' : 'left-1'}`} />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

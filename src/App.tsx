@@ -62,13 +62,18 @@ export default function App() {
 
   const saveUser = async (state: UserState) => {
     try {
-      await fetch("/api/user", {
+      const res = await fetch("/api/user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(state),
       });
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error("Failed to save user to database:", errorData.error);
+        // We could show a toast here if we had a toast system
+      }
     } catch (err) {
-      console.error("Failed to save user:", err);
+      console.error("Network error while saving user:", err);
     }
   };
 
@@ -95,7 +100,7 @@ export default function App() {
         }],
         analysisHistory: [],
         voiceSettings: { preset: "soft", speed: 1 },
-        notificationSettings: { enabled: false, dailyAlerts: true, updateAlerts: true },
+        notificationSettings: { enabled: true, dailyAlerts: true, updateAlerts: true },
         lastNotificationAt: null,
         onboardingSeen: [],
         streak: 1,
@@ -241,6 +246,16 @@ export default function App() {
       timestamp: Date.now()
     };
     const newState = { ...userState, history: [initialMsg], analysisHistory: [] };
+    setUserState(newState);
+    saveUser(newState);
+  };
+
+  const handleDeleteAnalysis = (id: string) => {
+    if (!userState) return;
+    const newState = { 
+      ...userState, 
+      analysisHistory: userState.analysisHistory.filter(a => a.id !== id) 
+    };
     setUserState(newState);
     saveUser(newState);
   };
@@ -497,6 +512,7 @@ export default function App() {
               analysisHistory={userState.analysisHistory}
               onSendMessage={handleSendMessage}
               onClearHistory={handleClearHistory}
+              onDeleteAnalysis={handleDeleteAnalysis}
               onOnboardingSeen={handleOnboardingSeen}
               onboardingSeen={userState.onboardingSeen}
               isTyping={isTyping}
