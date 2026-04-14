@@ -3,6 +3,7 @@ import { Message, UserState } from "../types";
 import { Send, Mic, Volume2, VolumeX, Sparkles, User, Bot, X, Image as ImageIcon, Camera, Loader2, Trash2, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import Markdown from "react-markdown";
+import { DEFAULT_BOT_AVATAR, ATHLAVIX_LOGO } from "../constants";
 import { getGeminiSpeech } from "../services/geminiService";
 
 interface ChatProps {
@@ -258,12 +259,15 @@ export const Chat: React.FC<ChatProps> = ({
       {/* Header */}
       <div className="p-4 border-b border-white/30 flex items-center justify-between bg-athlavix-accent/10 relative">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-athlavix-accent flex items-center justify-center text-white shadow-lg">
-            <Sparkles size={20} />
+          <div className="w-12 h-12 rounded-full bg-athlavix-accent flex items-center justify-center text-white shadow-lg overflow-hidden border-2 border-white/50">
+            <img src={botAvatar || DEFAULT_BOT_AVATAR || ATHLAVIX_LOGO} alt="ATHLAVIX" className="w-full h-full object-cover" />
           </div>
           <div>
-            <h2 className="font-bold text-athlavix-accent">ATHLAVIX VOICE</h2>
-            <p className="text-[10px] uppercase tracking-widest font-bold opacity-50">Expert Specialist</p>
+            <h2 className="font-bold text-athlavix-accent text-lg tracking-tight">ATHLAVIX VOICE</h2>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              <p className="text-[10px] uppercase tracking-widest font-bold opacity-50">Expert Specialist • Online</p>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -343,11 +347,6 @@ export const Chat: React.FC<ChatProps> = ({
         </AnimatePresence>
       </div>
 
-      {/* Order Notice Banner */}
-      <div className="bg-athlavix-accent text-white px-4 py-2 text-[10px] font-bold text-center uppercase tracking-[0.2em] animate-pulse">
-        Orders via Facebook Page only • ওয়েবসাইট থেকে অর্ডার আপাতত বন্ধ
-      </div>
-
       {/* Messages or History */}
       <div 
         ref={scrollRef}
@@ -379,7 +378,7 @@ export const Chat: React.FC<ChatProps> = ({
                         {msg.role === "user" ? (
                           userAvatar ? <img src={userAvatar} alt="User" className="w-full h-full object-cover" /> : <User size={20} />
                         ) : (
-                          botAvatar ? <img src={botAvatar} alt="Bot" className="w-full h-full object-cover" /> : <Bot size={20} />
+                          (botAvatar || DEFAULT_BOT_AVATAR) ? <img src={botAvatar || DEFAULT_BOT_AVATAR} alt="Bot" className="w-full h-full object-cover" /> : <Bot size={20} />
                         )}
                       </div>
                       <div className={`max-w-[75%] space-y-1 ${msg.role === "user" ? "items-end" : "items-start"}`}>

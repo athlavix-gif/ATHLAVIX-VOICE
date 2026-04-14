@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { UserState, SkinType, Message, Badge } from "./types";
+import { DEFAULT_BOT_AVATAR, ATHLAVIX_LOGO } from "./constants";
 import { Chat } from "./components/Chat";
 import { Progress } from "./components/Progress";
 import { Gamification } from "./components/Gamification";
@@ -7,7 +8,6 @@ import { Celebration } from "./components/Celebration";
 import { ProfileModal } from "./components/ProfileModal";
 import { NotificationManager } from "./components/NotificationManager";
 import { getGeminiResponse, getGeminiResponseStream } from "./services/geminiService";
-import { supabase } from "./lib/supabase";
 import { Sparkles, User as UserIcon, Settings, LogOut, Menu, X, Trophy } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -48,65 +48,14 @@ export default function App() {
           if (updatedUser !== data) {
             saveUser(updatedUser);
           }
-        } else if (res.status === 404) {
+        } else {
           // If ID exists in local but not in DB, reset
           localStorage.removeItem(USER_ID_KEY);
           setIsFirstTime(true);
-        } else {
-          throw new Error("API failed");
         }
       } catch (err) {
-        console.warn("Backend API failed, falling back to client-side Supabase:", err);
-        // Fallback to client-side Supabase
-        try {
-          const { data: user, error } = await supabase
-            .from("users")
-            .select("*")
-            .eq("id", storedId)
-            .single();
-
-          if (error) {
-            if (error.code === "PGRST116") {
-              localStorage.removeItem(USER_ID_KEY);
-              setIsFirstTime(true);
-            } else {
-              console.error("Client-side Supabase fetch error:", error);
-              setIsFirstTime(true);
-            }
-          } else if (user) {
-            // Map snake_case to camelCase
-            const mappedUser: UserState = {
-              id: user.id,
-              name: user.name,
-              whatsapp: user.whatsapp,
-              avatar: user.avatar,
-              botAvatar: user.bot_avatar || null,
-              skinType: user.skin_type,
-              concerns: user.concerns,
-              points: user.points,
-              level: user.level,
-              badges: user.badges,
-              completedChallenges: user.completed_challenges,
-              challengeProgress: user.challenge_progress,
-              history: user.history,
-              analysisHistory: user.analysis_history,
-              voiceSettings: user.voice_settings,
-              notificationSettings: user.notification_settings,
-              lastNotificationAt: user.last_notification_at,
-              onboardingSeen: user.onboarding_seen,
-              streak: user.streak,
-              lastCheckIn: user.last_check_in
-            };
-            const updatedUser = checkStreak(mappedUser);
-            setUserState(updatedUser);
-            if (updatedUser !== mappedUser) {
-              saveUser(updatedUser);
-            }
-          }
-        } catch (clientErr) {
-          console.error("Client-side Supabase fallback failed:", clientErr);
-          setIsFirstTime(true);
-        }
+        console.error("Failed to load user:", err);
+        setIsFirstTime(true);
       }
     };
     loadUser();
@@ -114,51 +63,13 @@ export default function App() {
 
   const saveUser = async (state: UserState) => {
     try {
-      const res = await fetch("/api/user", {
+      await fetch("/api/user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(state),
       });
-      if (!res.ok) {
-        throw new Error("API save failed");
-      }
     } catch (err) {
-      console.warn("Backend API save failed, falling back to client-side Supabase:", err);
-      // Fallback to client-side Supabase
-      try {
-        const userData = {
-          id: state.id,
-          name: state.name,
-          whatsapp: state.whatsapp || "",
-          avatar: state.avatar || null,
-          bot_avatar: state.botAvatar || null,
-          skin_type: state.skinType || null,
-          concerns: state.concerns || [],
-          points: state.points || 0,
-          level: state.level || 1,
-          badges: state.badges || [],
-          completed_challenges: state.completedChallenges || [],
-          challenge_progress: state.challengeProgress || {},
-          history: state.history || [],
-          analysis_history: state.analysisHistory || [],
-          voice_settings: state.voiceSettings || { preset: "soft", speed: 1 },
-          notification_settings: state.notificationSettings || { enabled: false, dailyAlerts: true, updateAlerts: true },
-          last_notification_at: state.lastNotificationAt || null,
-          onboarding_seen: state.onboardingSeen || [],
-          streak: state.streak || 0,
-          last_check_in: state.lastCheckIn || null
-        };
-
-        const { error } = await supabase
-          .from("users")
-          .upsert(userData, { onConflict: "id" });
-
-        if (error) {
-          console.error("Client-side Supabase upsert error:", error);
-        }
-      } catch (clientErr) {
-        console.error("Client-side Supabase fallback save failed:", clientErr);
-      }
+      console.error("Failed to save user:", err);
     }
   };
 
@@ -170,7 +81,7 @@ export default function App() {
         name: tempName.trim(),
         whatsapp: tempWhatsapp.trim(),
         avatar: tempAvatar,
-        botAvatar: null,
+        botAvatar: DEFAULT_BOT_AVATAR,
         skinType: tempSkinType,
         concerns: [],
         points: 0,
@@ -506,7 +417,7 @@ export default function App() {
       {/* Mobile Header */}
       <div className="md:hidden p-4 flex items-center justify-between bg-white/20 backdrop-blur-sm border-b border-white/30">
         <div className="flex items-center gap-2">
-          <Sparkles className="text-athlavix-accent" size={24} />
+          <img src={ATHLAVIX_LOGO} alt="Logo" className="w-8 h-8 object-contain" />
           <span className="font-bold text-athlavix-accent">ATHLAVIX VOICE</span>
         </div>
         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-athlavix-accent">
@@ -523,17 +434,21 @@ export default function App() {
             exit={{ x: -300 }}
             className={`fixed md:static inset-y-0 left-0 w-72 z-50 bg-white/10 backdrop-blur-xl border-r border-white/30 p-6 flex flex-col gap-8 ${isSidebarOpen ? 'block' : 'hidden md:flex'}`}
           >
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-athlavix-accent rounded-full flex items-center justify-center text-white shadow-lg overflow-hidden shrink-0">
+            <div className="flex items-center gap-4 p-4 rounded-2xl bg-white/40 border border-white/50 shadow-sm">
+              <div className="w-14 h-14 bg-athlavix-accent rounded-full flex items-center justify-center text-white shadow-xl overflow-hidden shrink-0 border-2 border-white">
                 {userState.avatar ? (
                   <img src={userState.avatar} alt="User" className="w-full h-full object-cover" />
                 ) : (
-                  <Sparkles size={24} />
+                  <UserIcon size={28} />
                 )}
               </div>
               <div className="min-w-0">
-                <h1 className="text-lg font-bold text-athlavix-accent tracking-tight truncate">{userState.name}</h1>
-                <p className="text-[10px] uppercase tracking-widest font-bold opacity-50">Level {userState.level}</p>
+                <h1 className="text-lg font-bold text-athlavix-accent tracking-tight truncate leading-tight">{userState.name}</h1>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="px-2 py-0.5 bg-athlavix-accent/10 text-athlavix-accent rounded-full text-[8px] font-black uppercase tracking-widest">
+                    Level {userState.level}
+                  </span>
+                </div>
               </div>
             </div>
 

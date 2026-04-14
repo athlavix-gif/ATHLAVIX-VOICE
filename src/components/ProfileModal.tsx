@@ -2,7 +2,10 @@ import React, { useState } from "react";
 import { UserState, SkinType, SKIN_CONCERNS, VoiceSettings, NotificationSettings } from "../types";
 import { X, Camera, Save, User, Phone, Bot, Sparkles, Loader2, CheckCircle2, Bell, BellOff, Volume2, Play } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { GoogleGenAI } from "@google/genai";
 import { getGeminiSpeech } from "../services/geminiService";
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -107,17 +110,17 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, use
   const generateBotAvatar = async () => {
     setIsGenerating(true);
     try {
-      const res = await fetch("/api/generate-avatar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: botPrompt }),
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [{ text: botPrompt }],
+        },
       });
-
-      if (!res.ok) throw new Error("Avatar generation API failed");
-      const { image } = await res.json();
-      
-      if (image) {
-        setBotAvatar(image);
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          setBotAvatar(`data:image/png;base64,${part.inlineData.data}`);
+          break;
+        }
       }
     } catch (err) {
       console.error("Failed to generate avatar:", err);
